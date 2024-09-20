@@ -15,6 +15,7 @@ stream_queue = []
 current_stream_name = None
 current_stream_process = None
 queue_lock = threading.Lock()
+ffmpeg_out_log = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -23,10 +24,11 @@ async def lifespan(app: FastAPI):
     global current_stream_process
 
     print("SERVER STARTUP.")
+    ffmpeg_out_log = open('ffmpeg.log','a', encoding='utf-8') 
     yield
     print("SERVER SHUTDOWN")
     ffmpeg_out_log.write("SERVER IS SHUTTING DOWN. KILLING FFMPEG PROCESS...")
-    
+
     try:
         print("Killing ffmpeg...")
         if current_stream_process:
@@ -36,8 +38,16 @@ async def lifespan(app: FastAPI):
         print(e)
         if current_stream_process:
             current_stream_process.kill()
+
     ffmpeg_out_log.write("FFMPEG PROCESS KILLED. GOODBYE!")
     ffmpeg_out_log.close()
+
+    print("For safe measure, killing all running ffmpeg processes...")
+    try:
+        subprocess.run(["killall", "ffmpeg"], check=True)
+        print("Done killing all running ffmpeg processes.")
+    except Exception as e:
+        print(f"Error trying to kill all ffmpeg processes: {e}")
 
 app = FastAPI(lifespan=lifespan)
 
@@ -48,10 +58,6 @@ try:
     print(f"Debugger listening on port {debug_port}")
 except Exception as e:
     print(e)
-
-
-ffmpeg_out_log = open('ffmpeg.log','a', encoding='utf-8')    
-
 
 
 def register_exception(app: FastAPI):
@@ -125,17 +131,25 @@ def start_stream(stream_name: str):
 def stop_current_stream():
     global current_stream_process, current_stream_name
     if current_stream_process:
-        current_stream_process.terminate()
         try:
-            print("Killing ffmpeg...")
+            print("Terminating ffmpeg process...")
+            current_stream_process.terminate()
             current_stream_process.wait(timeout=10)
-            print("...done.")
+            print("ffmpeg process terminated")
         except Exception as e:
             print(e)
             current_stream_process.kill()
+            print("ffmpeg process killed")
         print(f"Stopped streaming {current_stream_name}")
         current_stream_process = None
         current_stream_name = None
+
+        print("For safe measure, killing all running ffmpeg processes...")
+        try:
+            subprocess.run(["killall", "ffmpeg"], check=True)
+            print("Done killing all running ffmpeg processes.")
+        except Exception as e:
+            print(f"Error trying to kill all ffmpeg processes: {e}")
 
 # Background thread to manage the stream queue
 def process_queue():
@@ -265,13 +279,59 @@ async def queue_list():
     <html>
         <head>
             <title>Queue</title>
+            <meta http-equiv="refresh" content="10">
+            <style>
+                body {{ color: white; font-family: Arial, sans-serif; }}
+                ul {{ list-style-type: disc; padding-left: 20px; }}
+                li {{ color: white; margin-bottom: 10px; }}
+            </style>
         </head>
         <body>
-            <h1>TEST TEST TET</h1>
-            <h1>{stream_queue}</h1>
+            <h1>Queue</h1>
+            <div id="queue-list">
+                <!-- The list will be rendered here -->
+            </div>
+            <script>
+                async function fetchQueue() {{
+                    try {{
+                        const response = await fetch('http://192.168.1.100:8483/queue-json');
+                        const data = await response.json();
+                        const queueList = document.getElementById('queue-list');
+                        
+                        // Clear the current list
+                        queueList.innerHTML = '';
+
+                        // Create a new unordered list element
+                        const ul = document.createElement('ul');
+
+                        // Iterate over the JSON data and create list items
+                        data.forEach(item => {{
+                            const li = document.createElement('li');
+                            li.textContent = item;
+                            ul.appendChild(li);
+                        }});
+
+                        // Append the new list to the div
+                        queueList.appendChild(ul);
+                    }} catch (error) {{
+                        console.error('Error fetching queue:', error);
+                    }}
+                }}
+
+                // Fetch and render the queue immediately
+                fetchQueue();
+
+                // Refresh the queue every 10 seconds
+                setInterval(fetchQueue, 10000);
+            </script>
         </body>
     </html>
     """
+
+@app.get('/queue-json')
+async def queue_json():
+        global stream_queue
+        return JSONResponse(content=stream_queue)
 
 
 @app.post("/on_play")

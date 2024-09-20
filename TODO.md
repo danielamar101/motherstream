@@ -2,3 +2,5 @@
 - dynamic canva sheet
 - playback shouldnt need a stream key
 - fix ffmpeg reliability and deadlocking issues
+- Have transnition screen when no sources are active 
+- 
