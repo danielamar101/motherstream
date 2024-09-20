@@ -104,8 +104,8 @@ def start_stream(stream_name: str):
 
     # build motherstream restream command
     ffmpeg_cmd = [
-        'ffmpeg', '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_name}', '-map', '0',
-        '-c', 'copy', '-f', 'flv', f'rtmp://{stream_host}:{rtmp_port}/motherstream/live'
+        'ffmpeg', '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_name}', '-flush_packets', '0', '-fflags', '+genpts', '-map', '0:v?', '-map', '0:a?',
+        '-copy_unknown', '-c', 'copy', '-f', 'flv', f'rtmp://{stream_host}:{rtmp_port}/motherstream/live'
     ]
     print("Starting ffmpeg subprocess...")
     current_stream_process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -121,7 +121,7 @@ def start_stream(stream_name: str):
 
     current_stream_name = stream_name
 
-    print(f"Started streaming live/{stream_name} to motherstream")
+    print(f"Started streaming live/{stream_name} to motherstream/live")
 
     threading.Thread(target=log_ffmpeg_output, args=(current_stream_process.stdout, "[FFmpeg stdout]"), daemon=True).start()
     threading.Thread(target=log_ffmpeg_output, args=(current_stream_process.stderr, "[FFmpeg stderr]"), daemon=True).start()
