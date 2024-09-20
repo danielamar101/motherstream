@@ -67,12 +67,17 @@ register_exception(app)
 
 def log_ffmpeg_output(pipe, prefix):
     global ffmpeg_out_log
-    for line in iter(pipe.readline, ''):
-        formatted_output = f"{prefix} {line.rstrip()}\n"
-        ffmpeg_out_log.write(formatted_output)
-        ffmpeg_out_log.flush()
-        # print(f"{prefix} {line.rstrip()}")
-    pipe.close()
+    try:
+        for line in iter(pipe.readline, ''):
+            if not line:
+                break
+            formatted_output = f"{prefix} {line.rstrip()}\n"
+            ffmpeg_out_log.write(formatted_output)
+            ffmpeg_out_log.flush()
+    except Exception as e:
+        print(f"Error reading FFmpeg output: {e}")
+    finally:
+        pipe.close()
 
 # Function to start re-streaming a user's stream to motherstream
 def start_stream(stream_name: str):
@@ -85,16 +90,27 @@ def start_stream(stream_name: str):
     try:
         stream_host = os.environ.get('HOST')
         rtmp_port = os.environ.get('RTMP_PORT')
+        if not stream_host or not rtmp_port:
+            print("Error: HOST and RTMP_PORT environment variables must be set.")
+            return
     except Exception as e:
         print(e)
 
     # build motherstream restream command
     ffmpeg_cmd = [
         'ffmpeg', '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_name}', '-map', '0',
-        '-c', 'copy', '-f', 'flv', f'rtmp://{stream_host}:{rtmp_port}/motherstream/{stream_name}'
+        '-c', 'copy', '-f', 'flv', f'rtmp://{stream_host}:{rtmp_port}/motherstream/live'
     ]
     print("Starting ffmpeg subprocess...")
     current_stream_process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return_code = current_stream_process.poll()
+    if return_code is not None:
+        print(f"FFmpeg process exited immediately with return code {return_code}")
+        # Read any remaining output
+        stderr_output, stdout_output = current_stream_process.communicate()
+        print(f"FFmpeg stderr:\n{stderr_output}")
+        print(f"FFmpeg stdout:\n{stdout_output}")
+        return
     print("...done")
 
     current_stream_name = stream_name

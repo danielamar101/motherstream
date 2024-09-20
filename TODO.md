@@ -1,3 +1,4 @@
-- Add uvicorn for mutiple workers
+- Add uvicorn for mutiple workers (still need to configure)
 - dynamic canva sheet
 - playback shouldnt need a stream key
+- fix ffmpeg reliability and deadlocking issues
