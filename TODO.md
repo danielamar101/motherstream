@@ -1,0 +1,3 @@
+- Add uvicorn for mutiple workers
+- dynamic canva sheet
+- playback shouldnt need a stream key

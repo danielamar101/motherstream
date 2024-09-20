@@ -1,0 +1,8 @@
+[tool.poetry]
+name = "motherstream"
+version = "0.1.0"
+description = "The server for the motherstream"
+authors = ["Daniel Amar danielamar10101@gmail.com"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "src"}]

@@ -1,0 +1,6 @@
+.envrc
+.vscode/launch.json
+
+
+__pycache__
+ffmpeg.log
