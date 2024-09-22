@@ -224,6 +224,7 @@ def is_streaming(context, stream_key=None, timeout=8):
     
 # Background thread to manage the stream queue
 def process_queue():
+    global stream_queue
     attempt = 1
     attempt_input = 1
     while True:
@@ -239,8 +240,7 @@ def process_queue():
                 print(f"ffmpeg process for {current_stream_key} ended")
                 stop_current_stream()
                 unqueue_client_stream()
-            else:
-                print("No stream in progress")
+        time.sleep(5) 
 
             # check if input/output is streaming video
             # if current_stream_process and current_stream_process.poll() is None and stream_queue:
@@ -272,7 +272,7 @@ def process_queue():
             #         attempt_input = 1
             # else:
             #     print("SKIPPING POLLING.")
-            time.sleep(5) 
+            
     
 
 # Start the process queueing thread
@@ -319,7 +319,7 @@ async def on_connect(
 
 # save updated queue state to persistent store.
 def _write_persistent_state():
-    global stream_queue
+    
     try:
         with open('QUEUE.json','w') as queue_file:
             queue_file.write(json.dumps(stream_queue))
@@ -327,11 +327,13 @@ def _write_persistent_state():
         print(f'error: {e}')
 
 def queue_client_stream(name):
+    global stream_queue
     stream_queue.append(name)
     _write_persistent_state()
 
 def unqueue_client_stream():
-    stream_queue.pop()
+    global stream_queue
+    stream_queue.pop(0)
     _write_persistent_state()
 
 @app.post("/override-queue")
@@ -378,11 +380,10 @@ async def on_publish_done(
 ):
     print(f"[on_publish_done] Stream {name} stopped by client in app {app}")
     with queue_lock:
-        if name and name in stream_queue:
-            unqueue_client_stream()
-            print(f"Removed {name} from the queue")
         if name and name == current_stream_key:
+            unqueue_client_stream()
             stop_current_stream()
+            print(f"Removed {name} from the queue")
     return JSONResponse(status_code=200, content={"message": "Publish done"})
 
 # RTMP on_done callback
@@ -497,10 +498,10 @@ async def kill_ffmpeg():
 
 @app.post("/clear-queue")
 async def clear_queue():
-    global queue_list
+    global stream_queue
     with open('QUEUE.json','w') as queue_file:
         queue_file.write('[]')
-    queue_list = []
+    stream_queue = []
     return JSONResponse(status_code=200, content={"message": "cleared queue."})
 
 
