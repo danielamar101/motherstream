@@ -12,15 +12,22 @@ import os
 
 # Global variables
 stream_queue = []
-current_stream_name = None
+current_stream_key = None
 current_stream_process = None
 queue_lock = threading.Lock()
 ffmpeg_out_log = None
 
+stream_host = os.environ.get('HOST')
+rtmp_port = os.environ.get('RTMP_PORT')
+if not stream_host or not rtmp_port:
+    print("")
+    raise Exception("Error: HOST and RTMP_PORT environment variables must be set.")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global ffmpeg_out_log
-    global current_stream_name
+    global current_stream_key
     global current_stream_process
 
     print("SERVER STARTUP.")
@@ -86,25 +93,16 @@ def log_ffmpeg_output(pipe, prefix):
         pipe.close()
 
 # Function to start re-streaming a user's stream to motherstream
-def start_stream(stream_name: str):
-    global current_stream_process, current_stream_name
-    # Sanitize stream_name
-    if not re.match(r'^[A-Za-z0-9_-]+$', stream_name):
-        print(f"Invalid stream name: {stream_name}")
+def start_stream(stream_key: str):
+    global current_stream_process, current_stream_key
+    # Sanitize stream_key
+    if not re.match(r'^[A-Za-z0-9_-]+$', stream_key):
+        print(f"Invalid stream name: {stream_key}")
         return
-    
-    try:
-        stream_host = os.environ.get('HOST')
-        rtmp_port = os.environ.get('RTMP_PORT')
-        if not stream_host or not rtmp_port:
-            print("Error: HOST and RTMP_PORT environment variables must be set.")
-            return
-    except Exception as e:
-        print(e)
 
     # build motherstream restream command
     ffmpeg_cmd = [
-        'ffmpeg', '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_name}', '-flush_packets', '0', '-fflags', '+genpts', '-map', '0:v?', '-map', '0:a?',
+        'ffmpeg', '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}', '-flush_packets', '0', '-fflags', '+genpts', '-map', '0:v?', '-map', '0:a?',
         '-copy_unknown', '-c', 'copy', '-f', 'flv', f'rtmp://{stream_host}:{rtmp_port}/motherstream/live'
     ]
     print("Starting ffmpeg subprocess...")
@@ -119,9 +117,9 @@ def start_stream(stream_name: str):
         return
     print("...done")
 
-    current_stream_name = stream_name
+    current_stream_key = stream_key
 
-    print(f"Started streaming live/{stream_name} to motherstream/live")
+    print(f"Started streaming live/{stream_key} to motherstream/live")
 
     threading.Thread(target=log_ffmpeg_output, args=(current_stream_process.stdout, "[FFmpeg stdout]"), daemon=True).start()
     threading.Thread(target=log_ffmpeg_output, args=(current_stream_process.stderr, "[FFmpeg stderr]"), daemon=True).start()
@@ -129,7 +127,7 @@ def start_stream(stream_name: str):
 
 # Function to stop the current re-streaming process
 def stop_current_stream():
-    global current_stream_process, current_stream_name
+    global current_stream_process, current_stream_key
     if current_stream_process:
         try:
             print("Terminating ffmpeg process...")
@@ -140,9 +138,9 @@ def stop_current_stream():
             print(e)
             current_stream_process.kill()
             print("ffmpeg process killed")
-        print(f"Stopped streaming {current_stream_name}")
+        print(f"Stopped streaming {current_stream_key}")
         current_stream_process = None
-        current_stream_name = None
+        current_stream_key = None
 
         print("For safe measure, killing all running ffmpeg processes...")
         try:
@@ -163,11 +161,11 @@ def process_queue():
 
             # If the current stream has ended (ffmpeg process has exited)
             if current_stream_process and current_stream_process.poll() is not None:
-                print(f"ffmpeg process for {current_stream_name} ended")
+                print(f"ffmpeg process for {current_stream_key} ended")
                 stop_current_stream()
 
-                if current_stream_name in stream_queue:
-                    stream_queue.remove(current_stream_name)
+                if current_stream_key in stream_queue:
+                    stream_queue.remove(current_stream_key)
         time.sleep(5) 
 
 # Start the process queueing thread
@@ -212,6 +210,7 @@ async def on_connect(
     print(f"[on_connect] Client connected to {app} from {addr}")
     return JSONResponse(status_code=200, content={"message": "Connection allowed"})
 
+# def queue_client_stream(name,)
 # RTMP on_publish callback
 @app.post("/on_publish")
 async def on_publish(
@@ -226,10 +225,13 @@ async def on_publish(
 ):
     print(f"[on_publish] Stream {name} started by client {addr} in app {app}")
     if app != 'live':
+        # Will allow streaming but not added to queuing mechanism. TODO: Block this for security purposes
         return JSONResponse(status_code=200, content={"message": f"Not handling this app: {app}"})
+    
     with queue_lock:
         if name not in stream_queue:
             stream_queue.append(name)
+            # append st
             print(f"Added {name} to the queue")
     return JSONResponse(status_code=200, content={"message": "Publishing allowed"})
 
@@ -250,7 +252,7 @@ async def on_publish_done(
         if name and name in stream_queue:
             stream_queue.remove(name)
             print(f"Removed {name} from the queue")
-        if name and name == current_stream_name:
+        if name and name == current_stream_key:
             stop_current_stream()
     return JSONResponse(status_code=200, content={"message": "Publish done"})
 

@@ -1,6 +1,7 @@
 - Add uvicorn for mutiple workers (still need to configure)
 - dynamic canva sheet
-- playback shouldnt need a stream key
-- fix ffmpeg reliability and deadlocking issues
 - Have transnition screen when no sources are active 
-- 
+- ensure nginx can startup upon server reboot even when motherstream is off
+- ffprobe implementation
+- on_close cleanup the original streaming app. BUG: sometimes a specific stream key is just bugged and does not stream (OBS issue)?
+- STATE MANAGEMENT: save queue upon server restarts
