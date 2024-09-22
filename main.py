@@ -9,6 +9,7 @@ import time
 import re
 import logging
 import os
+import json
 
 # Global variables
 stream_queue = []
@@ -16,6 +17,7 @@ current_stream_key = None
 current_stream_process = None
 queue_lock = threading.Lock()
 ffmpeg_out_log = None
+
 
 stream_host = os.environ.get('HOST')
 rtmp_port = os.environ.get('RTMP_PORT')
@@ -29,9 +31,21 @@ async def lifespan(app: FastAPI):
     global ffmpeg_out_log
     global current_stream_key
     global current_stream_process
+    global stream_queue
 
     print("SERVER STARTUP.")
     ffmpeg_out_log = open('ffmpeg.log','a', encoding='utf-8') 
+
+    # import persistent queue in the event of a server timeout
+    try:
+        if os.path.exists("./QUEUE.json"):
+            with open("./QUEUE.json",'r') as queue_file:
+                stream_queue = json.load(queue_file)
+    except json.JSONDecodeError as e:
+        print(f"Error reading input file: {e}")
+    except Exception as e:
+        print(e)
+                
     yield
     print("SERVER SHUTDOWN")
     ffmpeg_out_log.write("SERVER IS SHUTTING DOWN. KILLING FFMPEG PROCESS...")
@@ -94,7 +108,7 @@ def log_ffmpeg_output(pipe, prefix):
 
 # Function to start re-streaming a user's stream to motherstream
 def start_stream(stream_key: str):
-    global current_stream_process, current_stream_key
+    global current_stream_process, current_stream_key, stream_host, rtmp_port
     # Sanitize stream_key
     if not re.match(r'^[A-Za-z0-9_-]+$', stream_key):
         print(f"Invalid stream name: {stream_key}")
@@ -126,8 +140,10 @@ def start_stream(stream_key: str):
 
 
 # Function to stop the current re-streaming process
+# Returns stopped stream key
+# It is not the responsibility of this function to manage the queue list. That should be done separate of this function
 def stop_current_stream():
-    global current_stream_process, current_stream_key
+    global current_stream_process, current_stream_key, ffmpeg_out_log
     if current_stream_process:
         try:
             print("Terminating ffmpeg process...")
@@ -139,6 +155,9 @@ def stop_current_stream():
             current_stream_process.kill()
             print("ffmpeg process killed")
         print(f"Stopped streaming {current_stream_key}")
+
+        to_return = current_stream_key
+
         current_stream_process = None
         current_stream_key = None
 
@@ -148,9 +167,65 @@ def stop_current_stream():
             print("Done killing all running ffmpeg processes.")
         except Exception as e:
             print(f"Error trying to kill all ffmpeg processes: {e}")
+        
+        ffmpeg_out_log.write("FFMPEG process killed.\n")
+        return to_return
 
+def is_streaming(context, stream_key=None, timeout=8):
+    global stream_host, rtmp_port
+    """
+    Check if the given RTMP URL is streaming.
+    
+    Returns:
+    bool: True if the RTMP URL is streaming, False otherwise.
+    """
+
+    if context == 'source':
+        rtmp_url = f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}'
+    elif context == 'destination':
+        rtmp_url = f'rtmp://{stream_host}:{rtmp_port}/motherstream/live'
+    else:
+        raise Exception("Specify context to be with source or destination.")
+
+    try:
+        # Execute the ffprobe command
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "stream=index,codec_type",
+            "-select_streams", "v",  # Select only video streams
+            "-analyzeduration", "5000000", "-probesize", "5000000", "-rw_timeout", "5000000",
+            "-of", "json",
+            rtmp_url
+        ]
+        
+        # Run the ffprobe command with a timeout
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout)
+
+        # Check if ffprobe returned an empty output or an error message
+        if result.returncode != 0 or not result.stdout:
+            return False
+        
+        # Parse the JSON output
+        info = json.loads(result.stdout)
+        
+        # Check if there are any video streams present
+        if 'streams' in info and len(info['streams']) > 0:
+            return True
+        else:
+            return False
+
+    except subprocess.TimeoutExpired:
+        print(f"ffprobe timed out after {timeout} seconds.")
+        return False
+    except Exception as e:
+        print(f"Error occurred: {e}")
+        return False
+    
 # Background thread to manage the stream queue
 def process_queue():
+    attempt = 1
+    attempt_input = 1
     while True:
         with queue_lock:
             # If no current stream and there are streams in the queue
@@ -163,10 +238,42 @@ def process_queue():
             if current_stream_process and current_stream_process.poll() is not None:
                 print(f"ffmpeg process for {current_stream_key} ended")
                 stop_current_stream()
+                unqueue_client_stream()
+            else:
+                print("No stream in progress")
 
-                if current_stream_key in stream_queue:
-                    stream_queue.remove(current_stream_key)
-        time.sleep(5) 
+            # check if input/output is streaming video
+            # if current_stream_process and current_stream_process.poll() is None and stream_queue:
+
+            #     source_is_streaming = is_streaming('source',stream_queue[0])
+            #     if not source_is_streaming:
+            #         print(f"Problem with source stream(could be flaky!). Will retry. Attempt: {attempt_input}")
+            #         attempt_input += 1
+            #         if attempt_input == 4:
+            #             print("Have tried multiple times to poll input stream. All attempts have failed. Restarting re-stream command.")
+            #             attempt_input = 1
+            #             stopped_stream =  stop_current_stream()
+            #             unqueue_client_stream()
+            #             return
+
+            #     destination_is_streaming = is_streaming('destination')
+            #     if not destination_is_streaming:
+            #         print(f"Problem with restreaming(could be flaky!). Will retry. Attempt: {attempt}")
+            #         attempt += 1
+            #         if attempt == 4:
+            #             print("Have tried multiple times to poll output stream. All attempts have failed. Restarting re-stream command.")
+            #             attempt = 1
+            #             stopped_stream = stop_current_stream()
+            #             if stopped_stream:
+            #                 start_stream(stopped_stream)
+            #     if source_is_streaming and destination_is_streaming:
+            #         print("Both source and destination streams should be operational.")
+            #         attempt = 1
+            #         attempt_input = 1
+            # else:
+            #     print("SKIPPING POLLING.")
+            time.sleep(5) 
+    
 
 # Start the process queueing thread
 queue_thread = threading.Thread(target=process_queue, daemon=True)
@@ -210,7 +317,30 @@ async def on_connect(
     print(f"[on_connect] Client connected to {app} from {addr}")
     return JSONResponse(status_code=200, content={"message": "Connection allowed"})
 
-# def queue_client_stream(name,)
+# save updated queue state to persistent store.
+def _write_persistent_state():
+    global stream_queue
+    try:
+        with open('QUEUE.json','w') as queue_file:
+            queue_file.write(json.dumps(stream_queue))
+    except Exception as e:
+        print(f'error: {e}')
+
+def queue_client_stream(name):
+    stream_queue.append(name)
+    _write_persistent_state()
+
+def unqueue_client_stream():
+    stream_queue.pop()
+    _write_persistent_state()
+
+@app.post("/override-queue")
+async def override_queue_manually(
+    *args,
+    **kwarg
+):
+    pass
+
 # RTMP on_publish callback
 @app.post("/on_publish")
 async def on_publish(
@@ -230,8 +360,7 @@ async def on_publish(
     
     with queue_lock:
         if name not in stream_queue:
-            stream_queue.append(name)
-            # append st
+            queue_client_stream(name)
             print(f"Added {name} to the queue")
     return JSONResponse(status_code=200, content={"message": "Publishing allowed"})
 
@@ -250,7 +379,7 @@ async def on_publish_done(
     print(f"[on_publish_done] Stream {name} stopped by client in app {app}")
     with queue_lock:
         if name and name in stream_queue:
-            stream_queue.remove(name)
+            unqueue_client_stream()
             print(f"Removed {name} from the queue")
         if name and name == current_stream_key:
             stop_current_stream()
@@ -365,5 +494,13 @@ async def on_connect(
 async def kill_ffmpeg():
     stop_current_stream()
     return JSONResponse(status_code=200,content={"message": "stopped current stream"})
+
+@app.post("/clear-queue")
+async def clear_queue():
+    global queue_list
+    with open('QUEUE.json','w') as queue_file:
+        queue_file.write('[]')
+    queue_list = []
+    return JSONResponse(status_code=200, content={"message": "cleared queue."})
 
 
