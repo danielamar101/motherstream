@@ -112,7 +112,7 @@ def start_stream(stream_key: str):
     # Sanitize stream_key
     if not re.match(r'^[A-Za-z0-9_-]+$', stream_key):
         print(f"Invalid stream name: {stream_key}")
-        return
+        raise Exception(f"Invalid stream name. Not starting stream.") 
 
     # build motherstream restream command
     ffmpeg_cmd = [
@@ -233,7 +233,11 @@ def process_queue():
             if not current_stream_process and stream_queue:
                 print("Starting a stream...")
                 next_stream = stream_queue[0] 
-                start_stream(next_stream)
+                try:
+                    start_stream(next_stream)
+                except Exception as e:
+                    print(f"Error starting stream: {e}")
+                    stream_queue.pop(0)    
 
             # If the current stream has ended (ffmpeg process has exited)
             if current_stream_process and current_stream_process.poll() is not None:
