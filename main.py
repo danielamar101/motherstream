@@ -2,6 +2,7 @@ from fastapi import FastAPI, Form, BackgroundTasks, status, Request
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
+from obswebsocket import obsws, requests
 
 import subprocess
 import threading
@@ -24,6 +25,10 @@ rtmp_port = os.environ.get('RTMP_PORT')
 if not stream_host or not rtmp_port:
     print("")
     raise Exception("Error: HOST and RTMP_PORT environment variables must be set.")
+
+OBS_HOST = os.environ.get("OBS_HOST")
+OBS_PORT = os.environ.get("OBS_PORT")
+OBS_PASSWORD = os.environ.get("OBS_PASSWORD")
 
 
 @asynccontextmanager
@@ -116,7 +121,7 @@ def start_stream(stream_key: str):
 
     # build motherstream restream command
     ffmpeg_cmd = [
-        'ffmpeg', '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}', '-flush_packets', '0', '-fflags', '+genpts', '-map', '0:v?', '-map', '0:a?',
+        'ffmpeg', "-rw_timeout", "5000000", '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}', '-flush_packets', '0', '-fflags', '+genpts', '-max_interleave_delta', '0', '-map', '0:v?', '-map', '0:a?',
         '-copy_unknown', '-c', 'copy', '-f', 'flv', f'rtmp://{stream_host}:{rtmp_port}/motherstream/live'
     ]
     print("Starting ffmpeg subprocess...")
@@ -295,8 +300,6 @@ async def on_connect(
     epoch: str = Form(...),
     call: str = Form(...)
 ):
-    print("on_connect")
-
     payload = {
     "app": app,
     "flashver": flashver,
@@ -382,12 +385,42 @@ async def on_publish_done(
     addr: str = Form(...),
     call: str = Form(...)
 ):
+    global OBS_HOST, OBS_PORT, OBS_PASSWORD
     print(f"[on_publish_done] Stream {name} stopped by client in app {app}")
     with queue_lock:
         if name and name == current_stream_key:
             unqueue_client_stream()
             stop_current_stream()
             print(f"Removed {name} from the queue")
+
+    SOURCE_NAME = 'MOTHERSTREAM'
+    SCENE_NAME = 'MOTHERSTREAM 1'
+    ws = obsws(OBS_HOST, OBS_PORT, OBS_PASSWORD)
+    try:
+        ws.connect()
+
+        # 1. Get scene item list for MOTHERSTREAM 1
+        scene_item_list = ws.call(requests.GetSceneItemList(sceneName=SCENE_NAME))
+        
+        #2. Get sceneID from scene item dict
+        vlc_media_scene_id = None
+        for item in scene_item_list.datain['sceneItems']:
+            if item['sourceName'] == SOURCE_NAME:
+                vlc_media_scene_id = item['sceneItemId']
+                break;
+        if not vlc_media_scene_id:
+            raise Exception("Error getting vlc media source id. Cannot find proper source.")
+
+         #3. Hide the source in the current scene
+        ws.call(requests.SetSceneItemEnabled(sceneName=SCENE_NAME, sceneItemId=vlc_media_scene_id, sceneItemEnabled=False))
+        time.sleep(10)
+        ws.call(requests.SetSceneItemEnabled(sceneName=SCENE_NAME,  sceneItemId=vlc_media_scene_id, sceneItemEnabled=True))
+        print(f"Successfully turned on/off the source: {SOURCE_NAME}")
+    except Exception as e:
+        print(f"Exception with OBS WebSocket: {e}")
+    finally:
+        ws.disconnect()
+
     return JSONResponse(status_code=200, content={"message": "Publish done"})
 
 # RTMP on_done callback
