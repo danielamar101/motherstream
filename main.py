@@ -19,6 +19,7 @@ current_stream_process = None
 queue_lock = threading.Lock()
 ffmpeg_out_log = None
 
+logger = logging.getLogger(__name__)
 
 stream_host = os.environ.get('HOST')
 rtmp_port = os.environ.get('RTMP_PORT')
@@ -451,12 +452,14 @@ async def queue_list():
             <meta http-equiv="refresh" content="10">
             <style>
                 body {{ color: white; font-family: Arial, sans-serif; }}
-                ul {{ list-style-type: disc; padding-left: 20px; }}
+                ul {{ list-style: none; padding-left: 20px; }}
                 li {{ color: white; margin-bottom: 10px; }}
             </style>
         </head>
         <body>
             <h1>Queue</h1>
+            <h5 id="next-up">Now Playing:</h5>
+            <h5>Next up:</h5>
             <div id="queue-list">
                 <!-- The list will be rendered here -->
             </div>
@@ -466,19 +469,28 @@ async def queue_list():
                         const response = await fetch('http://192.168.1.100:8483/queue-json');
                         const data = await response.json();
                         const queueList = document.getElementById('queue-list');
+                        const nowPlaying = document.getElementById('next-up');
                         
                         // Clear the current list
                         queueList.innerHTML = '';
+                        nowPlaying.textContent = 'Now Playing:';
 
                         // Create a new unordered list element
                         const ul = document.createElement('ul');
 
-                        // Iterate over the JSON data and create list items
-                        data.forEach(item => {{
-                            const li = document.createElement('li');
-                            li.textContent = item;
-                            ul.appendChild(li);
-                        }});
+                        if (data.length > 0) {{
+                            nowPlaying.textContent = `Now Playing: ${{data[0]}}`;
+                            // Iterate over the JSON data and create list items
+
+
+                            data.forEach((item,index) => {{
+                                if (index !== 0) {{
+                                    const li = document.createElement('li');
+                                    li.textContent = item;
+                                    ul.appendChild(li);
+                                }}
+                            }});
+                        }}
 
                         // Append the new list to the div
                         queueList.appendChild(ul);

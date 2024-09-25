@@ -1,0 +1,9 @@
+export DEBUG_PORT=
+export SSH_USER=
+export HOST=
+export SSH_PORT=
+export RTMP_PORT=
+
+export OBS_HOST
+export OBS_PORT=
+export OBS_PASSWORD=
