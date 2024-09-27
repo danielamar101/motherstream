@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
     global stream_queue
 
     print("SERVER STARTUP.")
-    ffmpeg_out_log = open('ffmpeg.log','a', encoding='utf-8') 
+    ffmpeg_out_log = open('ffmpeg.log','w', encoding='utf-8') 
 
     # import persistent queue in the event of a server timeout
     try:
