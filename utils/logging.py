@@ -10,3 +10,7 @@ class FFmpegLogFilter(logging.Filter):
     def filter(self, record):
         # Check if the log message contains '/ffmpeg.log'
         return '/ffmpeg.log' not in record.getMessage()
+    
+class IgnoreChangeDetectedFilter(logging.Filter):
+    def filter(self, record):
+        return '%d change%s detected: %s' != record.getMessage()

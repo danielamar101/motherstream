@@ -11,6 +11,9 @@ import re
 import logging
 import os
 import json
+from pydantic import BaseModel
+import requests
+import xml.etree.ElementTree as ET
 
 # Global variables
 stream_queue = []
@@ -18,6 +21,14 @@ current_stream_key = None
 current_stream_process = None
 queue_lock = threading.Lock()
 ffmpeg_out_log = None
+vlc_source_toggle_state = False
+what_should_i_do = 'NOTHING'
+
+OBS_HOST = os.environ.get("OBS_HOST")
+OBS_PORT = os.environ.get("OBS_PORT")
+OBS_PASSWORD = os.environ.get("OBS_PASSWORD")
+
+STAT_PORT = 8989
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +38,6 @@ if not stream_host or not rtmp_port:
     print("")
     raise Exception("Error: HOST and RTMP_PORT environment variables must be set.")
 
-OBS_HOST = os.environ.get("OBS_HOST")
-OBS_PORT = os.environ.get("OBS_PORT")
-OBS_PASSWORD = os.environ.get("OBS_PASSWORD")
 
 
 @asynccontextmanager
@@ -86,6 +94,40 @@ try:
 except Exception as e:
     print(e)
 
+def toggle_vlc_obs_source():
+    global OBS_HOST, OBS_PASSWORD, OBS_PASSWORD, vlc_source_toggle_state
+    SOURCE_NAME = 'MOTHERSTREAM'
+    SCENE_NAME = 'MOTHERSTREAM 1'
+    ws = obsws(OBS_HOST, OBS_PORT, OBS_PASSWORD)
+    try:
+        ws.connect()
+
+        # 1. Get scene item list for MOTHERSTREAM 1
+        scene_item_list = ws.call(requests.GetSceneItemList(sceneName=SCENE_NAME))
+        
+        #2. Get sceneID from scene item dict
+        vlc_media_scene_id = None
+        for item in scene_item_list.datain['sceneItems']:
+            if item['sourceName'] == SOURCE_NAME:
+                vlc_media_scene_id = item['sceneItemId']
+                break;
+        if not vlc_media_scene_id:
+            raise Exception("Error getting vlc media source id. Cannot find proper source.")
+
+        vlc_source_toggle_state = not vlc_source_toggle_state
+        #3. Hide the source in the current scene
+        ws.call(requests.SetSceneItemEnabled(sceneName=SCENE_NAME, sceneItemId=vlc_media_scene_id, sceneItemEnabled=False))
+        time.sleep(30)
+        ws.call(requests.SetSceneItemEnabled(sceneName=SCENE_NAME, sceneItemId=vlc_media_scene_id, sceneItemEnabled=True))
+
+        on_or_off = 'On' if vlc_source_toggle_state else 'Off'
+
+        print(f"Successfully toggled the source: {SOURCE_NAME} to {on_or_off}")
+    except Exception as e:
+        print(f"Exception with OBS WebSocket: {e}")
+    finally:
+        ws.disconnect()
+
 
 def register_exception(app: FastAPI):
     @app.exception_handler(RequestValidationError)
@@ -97,6 +139,83 @@ def register_exception(app: FastAPI):
         return JSONResponse(content=content, status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
 register_exception(app)
+
+# Not sure if really need this function, nonetheless it took me a while to write so lets keep it around
+def parse_xml_stat():
+    global stream_host, STAT_PORT
+
+    stats_page = requests.get(f'http://{stream_host}:{STAT_PORT}/stat').content
+    stats_tree = ET.fromstring(stats_page)
+    data = {
+        "applications": []
+    }
+
+    server_stat = stats_tree.find('server')
+
+    for app in server_stat.findall('application'):
+        app_name = app.find('name').text  # Get the application name
+        
+        app_data = {
+            "application_name": app_name,
+            "streams": []
+        }
+        
+        live = app.find('live')  
+        if live is not None:
+            # Check for any active streams within the application
+            for stream in live.findall('stream'):
+                stream_name = stream.find('name').text  # Get the stream name
+                stream_time = stream.find('time').text  # Get the stream time
+                
+                # Extract bandwidth info
+                bw_in = int(stream.find('bw_in').text)  # Bandwidth coming in
+                bytes_in = int(stream.find('bytes_in').text)  # Bytes coming in
+                bw_out = int(stream.find('bw_out').text)  # Bandwidth going out
+                bytes_out = int(stream.find('bytes_out').text)  # Bytes going out
+                
+                # not a good determinant 
+                stream_status = {
+                    "is_publishing": bw_in > 0 or bytes_in > 0,
+                    "is_playing": bw_out > 0 or bytes_out > 0
+                }
+                
+                stream_data = {
+                    "stream_name": stream_name,
+                    "uptime": stream_time,
+                    "publish_status": stream_status["is_publishing"],
+                    "play_status": stream_status["is_playing"],
+                    "clients": []
+                }
+                
+                # Look for any clients connected to this stream
+                for client in stream.findall('client'):
+                    client_id = client.find('id').text
+                    client_address = client.find('address').text
+                    client_time = client.find('time').text
+                    
+                    client_data = {
+                        "client_id": client_id,
+                        "client_address": client_address,
+                        "client_time": client_time
+                    }
+                    
+                    stream_data["clients"].append(client_data)
+                
+                app_data["streams"].append(stream_data)
+        
+        # Find out how many clients are connected overall
+        nclients = live.find('nclients').text if live is not None else '0'
+        app_data["total_clients"] = nclients
+        
+        # Add the application data to the final data structure
+        data["applications"].append(app_data)
+
+    # Convert the data structure to JSON format
+    return data
+
+@app.get("/parse-stat")
+async def detect_stream():
+    parse_xml_stat()
 
 def log_ffmpeg_output(pipe, prefix):
     global ffmpeg_out_log
@@ -122,9 +241,36 @@ def start_stream(stream_key: str):
 
     # build motherstream restream command
     ffmpeg_cmd = [
-        'ffmpeg', "-rw_timeout", "5000000", '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}', '-flush_packets', '0', '-fflags', '+genpts', '-max_interleave_delta', '0', '-map', '0:v?', '-map', '0:a?',
+        'ffmpeg', "-rw_timeout", "5000000", '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}', '-flush_packets', '0', '-max_interleave_delta', '0', '-fflags', '+genpts',  '-map', '0:v?', '-map', '0:a?',
         '-copy_unknown', '-c', 'copy', '-f', 'flv', f'rtmp://{stream_host}:{rtmp_port}/motherstream/live'
+
     ]
+#     ffmpeg_cmd = [
+#     'ffmpeg', '-re', '-rw_timeout', '5000000',
+#     '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}',
+#     '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency',
+#     
+#     '-c:a', 'aac', '-b:a', '128k',
+#     '-f', 'flv', f'rtmp://{stream_host}:{rtmp_port}/motherstream/live'
+# ]
+    
+#     ffmpeg_cmd = [ 'ffmpeg',
+#         "-re", 
+#         "-rw_timeout", "5000000", 
+#         "-i", f"rtmp://{stream_host}:{rtmp_port}/live/{stream_key}", 
+#         "-filter_complex", "[0:a]aresample=async=1:first_pts=0,asetpts=N/SR/TB[aud];[0:v]setpts=PTS-STARTPTS[vid]", 
+#         "-map", "[vid]", 
+#         "-map", "[aud]", 
+#         '-max_interleave_delta', '0',
+#         "-c:v", "libx264", 
+#         "-preset", "veryfast", 
+#         "-tune", "zerolatency", 
+#         "-c:a", "aac", 
+#         "-b:a", "128k", 
+#         "-f", "flv", 
+#         f"rtmp://{stream_host}:{rtmp_port}/motherstream/live"
+#     ]
+    
     print("Starting ffmpeg subprocess...")
     current_stream_process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return_code = current_stream_process.poll()
@@ -231,60 +377,29 @@ def is_streaming(context, stream_key=None, timeout=8):
 # Background thread to manage the stream queue
 def process_queue():
     global stream_queue
-    attempt = 1
-    attempt_input = 1
+
     while True:
         with queue_lock:
             # If no current stream and there are streams in the queue
-            if not current_stream_process and stream_queue:
-                print("Starting a stream...")
-                next_stream = stream_queue[0] 
-                try:
-                    start_stream(next_stream)
-                except Exception as e:
-                    print(f"Error starting stream: {e}")
-                    stream_queue.pop(0)    
+            if not current_stream_process: 
+                if stream_queue:
+                    print("Starting a stream...")
+                    next_stream = stream_queue[0] 
+                    try:
+                        start_stream(next_stream)
+                    except Exception as e:
+                        print(f"Error starting stream: {e}")
+                        stream_queue.pop(0)
 
             # If the current stream has ended (ffmpeg process has exited)
             if current_stream_process and current_stream_process.poll() is not None:
                 print(f"ffmpeg process for {current_stream_key} ended")
                 stop_current_stream()
                 unqueue_client_stream()
-        time.sleep(5) 
 
-            # check if input/output is streaming video
-            # if current_stream_process and current_stream_process.poll() is None and stream_queue:
+        time.sleep(3) 
 
-            #     source_is_streaming = is_streaming('source',stream_queue[0])
-            #     if not source_is_streaming:
-            #         print(f"Problem with source stream(could be flaky!). Will retry. Attempt: {attempt_input}")
-            #         attempt_input += 1
-            #         if attempt_input == 4:
-            #             print("Have tried multiple times to poll input stream. All attempts have failed. Restarting re-stream command.")
-            #             attempt_input = 1
-            #             stopped_stream =  stop_current_stream()
-            #             unqueue_client_stream()
-            #             return
-
-            #     destination_is_streaming = is_streaming('destination')
-            #     if not destination_is_streaming:
-            #         print(f"Problem with restreaming(could be flaky!). Will retry. Attempt: {attempt}")
-            #         attempt += 1
-            #         if attempt == 4:
-            #             print("Have tried multiple times to poll output stream. All attempts have failed. Restarting re-stream command.")
-            #             attempt = 1
-            #             stopped_stream = stop_current_stream()
-            #             if stopped_stream:
-            #                 start_stream(stopped_stream)
-            #     if source_is_streaming and destination_is_streaming:
-            #         print("Both source and destination streams should be operational.")
-            #         attempt = 1
-            #         attempt_input = 1
-            # else:
-            #     print("SKIPPING POLLING.")
             
-    
-
 # Start the process queueing thread
 queue_thread = threading.Thread(target=process_queue, daemon=True)
 queue_thread.start()
@@ -386,41 +501,14 @@ async def on_publish_done(
     addr: str = Form(...),
     call: str = Form(...)
 ):
-    global OBS_HOST, OBS_PORT, OBS_PASSWORD
+    global current_stream_key
+
     print(f"[on_publish_done] Stream {name} stopped by client in app {app}")
-    with queue_lock:
-        if name and name == current_stream_key:
-            unqueue_client_stream()
-            stop_current_stream()
-            print(f"Removed {name} from the queue")
-
-    SOURCE_NAME = 'MOTHERSTREAM'
-    SCENE_NAME = 'MOTHERSTREAM 1'
-    ws = obsws(OBS_HOST, OBS_PORT, OBS_PASSWORD)
-    try:
-        ws.connect()
-
-        # 1. Get scene item list for MOTHERSTREAM 1
-        scene_item_list = ws.call(requests.GetSceneItemList(sceneName=SCENE_NAME))
-        
-        #2. Get sceneID from scene item dict
-        vlc_media_scene_id = None
-        for item in scene_item_list.datain['sceneItems']:
-            if item['sourceName'] == SOURCE_NAME:
-                vlc_media_scene_id = item['sceneItemId']
-                break;
-        if not vlc_media_scene_id:
-            raise Exception("Error getting vlc media source id. Cannot find proper source.")
-
-         #3. Hide the source in the current scene
-        ws.call(requests.SetSceneItemEnabled(sceneName=SCENE_NAME, sceneItemId=vlc_media_scene_id, sceneItemEnabled=False))
-        time.sleep(10)
-        ws.call(requests.SetSceneItemEnabled(sceneName=SCENE_NAME,  sceneItemId=vlc_media_scene_id, sceneItemEnabled=True))
-        print(f"Successfully turned on/off the source: {SOURCE_NAME}")
-    except Exception as e:
-        print(f"Exception with OBS WebSocket: {e}")
-    finally:
-        ws.disconnect()
+    # with queue_lock:
+    #     if name and name == current_stream_key:
+    #         unqueue_client_stream()
+    #         stop_current_stream()
+    #         print(f"Removed {name} from the queue")
 
     return JSONResponse(status_code=200, content={"message": "Publish done"})
 
@@ -553,4 +641,26 @@ async def clear_queue():
     stream_queue = []
     return JSONResponse(status_code=200, content={"message": "cleared queue."})
 
+class MyStatus(BaseModel):
+    status: str
 
+@app.post("/poll-for-work")
+async def poll_for_work(client_state: MyStatus):
+    global current_stream_process
+    return_status = None
+
+    if client_state.status == 'working' and current_stream_process:
+        return_status = 'NOTHING'
+    elif client_state.status == 'working' and not current_stream_process:
+        return_status = 'STOP'
+    elif client_state.status == 'idle' and current_stream_process:
+        return_status = 'START'
+    elif client_state.status == 'idle' and not current_stream_process:
+        return_status = 'NOTHING'
+    else:
+        return_status = 'NOTHING'
+    logging.info(f"POLLING STATUS: DO {return_status}")
+    status = {
+        'status': return_status
+    }
+    return JSONResponse(status_code=200, content=status)
