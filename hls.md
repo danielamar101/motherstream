@@ -1,0 +1,1 @@
+http://<server_address>/hls/motherstream.m3u8
