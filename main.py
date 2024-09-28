@@ -144,7 +144,43 @@ def start_stream(stream_key: str):
     threading.Thread(target=log_ffmpeg_output, args=(current_stream_process.stdout, "[FFmpeg stdout]"), daemon=True).start()
     threading.Thread(target=log_ffmpeg_output, args=(current_stream_process.stderr, "[FFmpeg stderr]"), daemon=True).start()
 
+def extend_motherstream():
+    import m3u8
+    import shutil
+    print("In extend_motherstream")
+    # Load the existing playlist
+    root_path = '/var/www/hls'
+    m3u8_file_path = f'{root_path}/live.m3u8'
+    updated_m3u8_file_path = f'{root_path}/live.m3u8'
 
+    try:
+        # Backup the original .m3u8 file
+        shutil.copyfile(m3u8_file_path, m3u8_file_path + '.bak')
+
+        # Load the playlist
+        m3u8_obj = m3u8.load(m3u8_file_path)
+
+        # Function to extend playlist with the same segments repeatedly
+        def extend_playlist(m3u8_obj, repetitions=2):
+            new_segments = m3u8_obj.segments * repetitions  # Repeat the same segments 'repetitions' times
+            new_playlist = m3u8.M3U8()
+            new_playlist.target_duration = m3u8_obj.target_duration
+            new_playlist.media_sequence = m3u8_obj.media_sequence
+            for segment in new_segments:
+                new_playlist.add_segment(segment)
+            return new_playlist
+
+        # Extend playlist
+        extended_playlist = extend_playlist(m3u8_obj, repetitions=2)
+
+        print("Doing work...")
+        # Save the new playlist to a new file
+        with open(updated_m3u8_file_path, 'w') as file:
+            file.write(extended_playlist.dumps())
+        print(f'Updated .m3u8 file created at {updated_m3u8_file_path}')
+    except Exception as e:
+        print(e)
+    
 # Function to stop the current re-streaming process
 # Returns stopped stream key
 # It is not the responsibility of this function to manage the queue list. That should be done separate of this function
@@ -236,14 +272,17 @@ def process_queue():
     while True:
         with queue_lock:
             # If no current stream and there are streams in the queue
-            if not current_stream_process and stream_queue:
-                print("Starting a stream...")
-                next_stream = stream_queue[0] 
-                try:
-                    start_stream(next_stream)
-                except Exception as e:
-                    print(f"Error starting stream: {e}")
-                    stream_queue.pop(0)    
+            if not current_stream_process: 
+                if stream_queue:
+                    print("Starting a stream...")
+                    next_stream = stream_queue[0] 
+                    try:
+                        start_stream(next_stream)
+                        # toggle_vlc_obs_source()
+                    except Exception as e:
+                        print(f"Error starting stream: {e}")
+                        stream_queue.pop(0)  
+
 
             # If the current stream has ended (ffmpeg process has exited)
             if current_stream_process and current_stream_process.poll() is not None:
@@ -252,37 +291,6 @@ def process_queue():
                 unqueue_client_stream()
         time.sleep(5) 
 
-            # check if input/output is streaming video
-            # if current_stream_process and current_stream_process.poll() is None and stream_queue:
-
-            #     source_is_streaming = is_streaming('source',stream_queue[0])
-            #     if not source_is_streaming:
-            #         print(f"Problem with source stream(could be flaky!). Will retry. Attempt: {attempt_input}")
-            #         attempt_input += 1
-            #         if attempt_input == 4:
-            #             print("Have tried multiple times to poll input stream. All attempts have failed. Restarting re-stream command.")
-            #             attempt_input = 1
-            #             stopped_stream =  stop_current_stream()
-            #             unqueue_client_stream()
-            #             return
-
-            #     destination_is_streaming = is_streaming('destination')
-            #     if not destination_is_streaming:
-            #         print(f"Problem with restreaming(could be flaky!). Will retry. Attempt: {attempt}")
-            #         attempt += 1
-            #         if attempt == 4:
-            #             print("Have tried multiple times to poll output stream. All attempts have failed. Restarting re-stream command.")
-            #             attempt = 1
-            #             stopped_stream = stop_current_stream()
-            #             if stopped_stream:
-            #                 start_stream(stopped_stream)
-            #     if source_is_streaming and destination_is_streaming:
-            #         print("Both source and destination streams should be operational.")
-            #         attempt = 1
-            #         attempt_input = 1
-            # else:
-            #     print("SKIPPING POLLING.")
-            
     
 
 # Start the process queueing thread
@@ -386,41 +394,12 @@ async def on_publish_done(
     addr: str = Form(...),
     call: str = Form(...)
 ):
-    global OBS_HOST, OBS_PORT, OBS_PASSWORD
     print(f"[on_publish_done] Stream {name} stopped by client in app {app}")
     with queue_lock:
         if name and name == current_stream_key:
             unqueue_client_stream()
             stop_current_stream()
             print(f"Removed {name} from the queue")
-
-    SOURCE_NAME = 'MOTHERSTREAM'
-    SCENE_NAME = 'MOTHERSTREAM 1'
-    ws = obsws(OBS_HOST, OBS_PORT, OBS_PASSWORD)
-    try:
-        ws.connect()
-
-        # 1. Get scene item list for MOTHERSTREAM 1
-        scene_item_list = ws.call(requests.GetSceneItemList(sceneName=SCENE_NAME))
-        
-        #2. Get sceneID from scene item dict
-        vlc_media_scene_id = None
-        for item in scene_item_list.datain['sceneItems']:
-            if item['sourceName'] == SOURCE_NAME:
-                vlc_media_scene_id = item['sceneItemId']
-                break;
-        if not vlc_media_scene_id:
-            raise Exception("Error getting vlc media source id. Cannot find proper source.")
-
-         #3. Hide the source in the current scene
-        ws.call(requests.SetSceneItemEnabled(sceneName=SCENE_NAME, sceneItemId=vlc_media_scene_id, sceneItemEnabled=False))
-        time.sleep(10)
-        ws.call(requests.SetSceneItemEnabled(sceneName=SCENE_NAME,  sceneItemId=vlc_media_scene_id, sceneItemEnabled=True))
-        print(f"Successfully turned on/off the source: {SOURCE_NAME}")
-    except Exception as e:
-        print(f"Exception with OBS WebSocket: {e}")
-    finally:
-        ws.disconnect()
 
     return JSONResponse(status_code=200, content={"message": "Publish done"})
 
@@ -466,7 +445,7 @@ async def queue_list():
             <script>
                 async function fetchQueue() {{
                     try {{
-                        const response = await fetch('http://192.168.1.100:8483/queue-json');
+                        const response = await fetch('http://localhost:8483/queue-json');
                         const data = await response.json();
                         const queueList = document.getElementById('queue-list');
                         const nowPlaying = document.getElementById('next-up');
