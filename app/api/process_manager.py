@@ -6,10 +6,9 @@ import os
 import logging
 
 from ..lock_manager import lock as queue_lock
-from ..queue import StreamQueue
 from .obs import OBSSocketManager
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 stream_host = os.environ.get('HOST')
 rtmp_port = os.environ.get('RTMP_PORT')
@@ -29,11 +28,12 @@ class ProcessManager(metaclass=Singleton):
     current_stream_key = None
     ffmpeg_out_log = None
     stream_queue = None
-    obs_socket_manager = OBSSocketManager()
+    obs_socket_manager = None
 
     def __init__(self, stream_queue, ffmpeg_out_log=None):
         self.ffmpeg_out_log = ffmpeg_out_log
         self.stream_queue = stream_queue
+        self.obs_socket_manager = OBSSocketManager(stream_queue)
 
     def log_ffmpeg_output(self,pipe, prefix):
         try:
@@ -60,29 +60,35 @@ class ProcessManager(metaclass=Singleton):
 
         # build motherstream restream command
         ffmpeg_cmd = [
-            'ffmpeg', "-rw_timeout", "5000000", '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}', '-flush_packets', '0', '-fflags', '+genpts', '-max_interleave_delta', '0', '-map', '0:v?', '-map', '0:a?',
-            '-copy_unknown', '-c', 'copy', '-f', 'flv', f'rtmp://{stream_host}:{rtmp_port}/motherstream/live'
+            'ffmpeg', 
+            "-rw_timeout", "5000000", 
+            '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}', 
+            '-flush_packets', '0', 
+            '-fflags', '+genpts', 
+            '-max_interleave_delta', '0', 
+            '-map', '0:v?', 
+            '-map', '0:a?',
+            '-copy_unknown', 
+            '-c', 'copy', 
+            '-f', 'flv', 
+            f'rtmp://{stream_host}:{rtmp_port}/motherstream/live'
         ]
+
         logger.info("Starting ffmpeg subprocess...")
         self.current_stream_process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        
         return_code = self.current_stream_process.poll()
         if return_code is not None:
             logger.debug(f"FFmpeg process exited immediately with return code {return_code}")
-            # Read any remaining output
-            stderr_output, stdout_output = self.current_stream_process.communicate()
             return
+        
         logger.debug("...done")
         logger.info(f"Started streaming live/{stream_key} to motherstream/live")
 
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stdout, "[FFmpeg stdout]"), daemon=True).start()
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stderr, "[FFmpeg stderr]"), daemon=True).start()
 
-        logger.info("TOGGLING OBS GSTREAMER PIPELINE OFF THEN ON.")
-        try:
-            self.obs_socket_manager.toggle_obs_source(source_name="GMOTHERSTREAM", scene_name="MOTHERSTREAM 2")
-            logger.info("DONE TOGGLING OBS GSTREAMER PIPELINE ON/OFF.")
-        except Exception as e:
-            logger.exception(f"Error toggling off gstreamer source. {e}")
+        self.disable_gstreamer_source(only_off=True)
 
     # Function to stop the current re-streaming process
     # Returns stopped stream key
@@ -116,6 +122,15 @@ class ProcessManager(metaclass=Singleton):
             self.ffmpeg_out_log.write("FFMPEG process killed.\n")
             return to_return
         
+    def disable_gstreamer_source(self, only_off=False):
+        source_name = 'GMOTHERSTREAM'
+        scene_name = 'MOTHERSTREAM'
+        try:
+            self.obs_socket_manager.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=2, only_off=only_off)
+            logger.info(f"DONE TOGGLING OBS {scene_name}:{source_name} PIPELINE OFF.")
+        except Exception as e:
+            logger.exception(f"Error toggling off {scene_name}:{source_name}. {e}")
+        
     # Background thread to manage the stream queue
     def process_queue(self):
 
@@ -133,19 +148,16 @@ class ProcessManager(metaclass=Singleton):
                             logger.exception(f"Error starting stream: {e}")
                             self.stream_queue.unqueue_client_stream()  
                     else:
-                        try:
-                            logger.info("TOGGLING GSTREAMER OBS SOURCE ONLY OFF.")
-                            self.obs_socket_manager.toggle_obs_source(source_name="GMOTHERSTREAM", scene_name="MOTHERSTREAM 2",only_off=True)
-                            logger.info("DONE TOGGLING OBS GSTREAMER PIPELINE ON/OFF.")
-                        except Exception as e:
-                            logger.exception(f"Error toggling off gstreamer source. {e}")
-
-
+                        self.disable_gstreamer_source(only_off=True)
+        
                 # If the current stream has ended (ffmpeg process has exited)
                 if self.current_stream_process and self.current_stream_process.poll() is not None:
                     logger.debug(f"ffmpeg process for {self.current_stream_key} ended")
+                    self.disable_gstreamer_source(only_off=True)
+
                     self.stop_current_stream()
                     self.stream_queue.unqueue_client_stream()
+
 
             time.sleep(3) 
     

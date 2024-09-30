@@ -6,7 +6,10 @@ from ..lock_manager import lock as queue_lock
 
 import logging
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
+
+multipart_logger = logging.getLogger('multipart.multipart')
+multipart_logger.setLevel(logging.CRITICAL + 1)
 
 rtmp_blueprint = APIRouter()
 

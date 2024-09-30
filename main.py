@@ -10,6 +10,7 @@ from app.app import register_app
 from app.queue import StreamQueue
 from app.api.process_manager import ProcessManager
 
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 try:
@@ -51,6 +52,8 @@ async def lifespan(app: FastAPI):
         logger.info("Done killing all running ffmpeg processes.")
     except Exception as e:
         logger.info(f"Error trying to kill all ffmpeg processes: {e}")
+
+    process_manager.obs_socket_manager.disconnect()
 
 app = FastAPI(lifespan=lifespan)
 

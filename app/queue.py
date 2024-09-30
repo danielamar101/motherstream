@@ -3,7 +3,7 @@ import json
 import os
 import logging
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 class Singleton(type):
     _instances = {}
