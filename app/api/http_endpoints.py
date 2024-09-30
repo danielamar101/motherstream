@@ -8,7 +8,6 @@ http_blueprint = APIRouter()
 @http_blueprint.get('/queue-json')
 async def queue_json():
         stream_queue = process_manager.stream_queue.get_stream_queue_as_list()
-        print(stream_queue)
         return JSONResponse(content=stream_queue)
 
 

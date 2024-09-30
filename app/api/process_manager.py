@@ -3,14 +3,17 @@ import subprocess
 import threading
 import time
 import os
+import logging
 
 from ..lock_manager import lock as queue_lock
 from ..queue import StreamQueue
+from .obs import OBSSocketManager
+
+logger = logging.getLogger()
 
 stream_host = os.environ.get('HOST')
 rtmp_port = os.environ.get('RTMP_PORT')
 if not stream_host or not rtmp_port:
-    print("")
     raise Exception("Error: HOST and RTMP_PORT environment variables must be set.")
 
 class Singleton(type):
@@ -26,6 +29,7 @@ class ProcessManager(metaclass=Singleton):
     current_stream_key = None
     ffmpeg_out_log = None
     stream_queue = None
+    obs_socket_manager = OBSSocketManager()
 
     def __init__(self, stream_queue, ffmpeg_out_log=None):
         self.ffmpeg_out_log = ffmpeg_out_log
@@ -40,7 +44,7 @@ class ProcessManager(metaclass=Singleton):
                 self.ffmpeg_out_log.write(formatted_output)
                 self.ffmpeg_out_log.flush()
         except Exception as e:
-            print(f"Error reading FFmpeg output: {e}")
+            logger.exception(f"Error reading FFmpeg output: {e}")
         finally:
             pipe.close()
 
@@ -49,7 +53,7 @@ class ProcessManager(metaclass=Singleton):
         global stream_host, rtmp_port
         # Sanitize stream_key
         if not re.match(r'^[A-Za-z0-9_-]+$', stream_key):
-            print(f"Invalid stream name: {stream_key}")
+            logger.exception(f"Invalid stream name: {stream_key}")
             raise Exception(f"Invalid stream name. Not starting stream.") 
 
         self.current_stream_key = stream_key
@@ -59,24 +63,26 @@ class ProcessManager(metaclass=Singleton):
             'ffmpeg', "-rw_timeout", "5000000", '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}', '-flush_packets', '0', '-fflags', '+genpts', '-max_interleave_delta', '0', '-map', '0:v?', '-map', '0:a?',
             '-copy_unknown', '-c', 'copy', '-f', 'flv', f'rtmp://{stream_host}:{rtmp_port}/motherstream/live'
         ]
-        print("Starting ffmpeg subprocess...")
+        logger.info("Starting ffmpeg subprocess...")
         self.current_stream_process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         return_code = self.current_stream_process.poll()
         if return_code is not None:
-            print(f"FFmpeg process exited immediately with return code {return_code}")
+            logger.debug(f"FFmpeg process exited immediately with return code {return_code}")
             # Read any remaining output
             stderr_output, stdout_output = self.current_stream_process.communicate()
-            print(f"FFmpeg stderr:\n{stderr_output}")
-            print(f"FFmpeg stdout:\n{stdout_output}")
             return
-        print("...done")
-
-
-        print(f"Started streaming live/{stream_key} to motherstream/live")
+        logger.debug("...done")
+        logger.info(f"Started streaming live/{stream_key} to motherstream/live")
 
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stdout, "[FFmpeg stdout]"), daemon=True).start()
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stderr, "[FFmpeg stderr]"), daemon=True).start()
 
+        logger.info("TOGGLING OBS GSTREAMER PIPELINE OFF THEN ON.")
+        try:
+            self.obs_socket_manager.toggle_obs_source(source_name="GMOTHERSTREAM", scene_name="MOTHERSTREAM 2")
+            logger.info("DONE TOGGLING OBS GSTREAMER PIPELINE ON/OFF.")
+        except Exception as e:
+            logger.exception(f"Error toggling off gstreamer source. {e}")
 
     # Function to stop the current re-streaming process
     # Returns stopped stream key
@@ -84,27 +90,28 @@ class ProcessManager(metaclass=Singleton):
     def stop_current_stream(self):
         if self.current_stream_process:
             try:
-                print("Terminating ffmpeg process...")
+                logger.info("Terminating ffmpeg process...")
                 self.current_stream_process.terminate()
-                self.current_stream_process.wait(timeout=10)
-                print("ffmpeg process terminated")
+                self.current_stream_process.wait(timeout=2)
+                logger.info("...ffmpeg process terminated.")
             except Exception as e:
-                print(e)
+                logger.exception(e)
                 self.current_stream_process.kill()
-                print("ffmpeg process killed")
-            print(f"Stopped streaming {self.current_stream_key}")
+                logger.exception("...ffmpeg process killed!")
+
+            logger.debug(f"Stopped streaming {self.current_stream_key}")
 
             to_return = self.current_stream_key
 
             self.current_stream_process = None
             self.current_stream_key = None
 
-            print("For safe measure, killing all running ffmpeg processes...")
+            logger.debug("For safe measure, killing all running ffmpeg processes...")
             try:
                 subprocess.run(["killall", "ffmpeg"], check=True)
-                print("Done killing all running ffmpeg processes.")
+                logger.debug("Done killing all running ffmpeg processes.")
             except Exception as e:
-                print(f"Error trying to kill all ffmpeg processes: {e}")
+                logger.exception(f"Error trying to kill all ffmpeg processes: {e}")
             
             self.ffmpeg_out_log.write("FFMPEG process killed.\n")
             return to_return
@@ -115,22 +122,32 @@ class ProcessManager(metaclass=Singleton):
         while True:
             with queue_lock:
                 # If no current stream and there are streams in the queue
-                actual_stream_queue = self.stream_queue.get_stream_queue_as_list()
-                if not self.current_stream_process and actual_stream_queue:
-                    print("Starting a stream...")
-                    next_stream = actual_stream_queue[0] 
-                    try:
-                        self.start_stream(next_stream)
-                    except Exception as e:
-                        print(f"Error starting stream: {e}")
-                        self.stream_queue.unqueue_client_stream()  
+                stream_queue_as_list = self.stream_queue.get_stream_queue_as_list()
+                if not self.current_stream_process: 
+                    if stream_queue_as_list:
+                        logger.debug("Starting a stream...")
+                        next_stream = stream_queue_as_list[0] 
+                        try:
+                            self.start_stream(next_stream)
+                        except Exception as e:
+                            logger.exception(f"Error starting stream: {e}")
+                            self.stream_queue.unqueue_client_stream()  
+                    else:
+                        try:
+                            logger.info("TOGGLING GSTREAMER OBS SOURCE ONLY OFF.")
+                            self.obs_socket_manager.toggle_obs_source(source_name="GMOTHERSTREAM", scene_name="MOTHERSTREAM 2",only_off=True)
+                            logger.info("DONE TOGGLING OBS GSTREAMER PIPELINE ON/OFF.")
+                        except Exception as e:
+                            logger.exception(f"Error toggling off gstreamer source. {e}")
+
 
                 # If the current stream has ended (ffmpeg process has exited)
                 if self.current_stream_process and self.current_stream_process.poll() is not None:
-                    print(f"ffmpeg process for {self.current_stream_key} ended")
+                    logger.debug(f"ffmpeg process for {self.current_stream_key} ended")
                     self.stop_current_stream()
                     self.stream_queue.unqueue_client_stream()
-            time.sleep(5) 
+
+            time.sleep(3) 
     
 
 

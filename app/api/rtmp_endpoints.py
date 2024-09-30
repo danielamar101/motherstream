@@ -1,9 +1,13 @@
 from fastapi.responses import JSONResponse
 from fastapi import Form, APIRouter
 
+from main import process_manager
 from ..lock_manager import lock as queue_lock
 
-from main import process_manager
+import logging
+
+logger = logging.getLogger()
+
 rtmp_blueprint = APIRouter()
 
 # RTMP on_publish callback
@@ -18,7 +22,7 @@ async def on_publish(
     addr: str = Form(...),
     call: str = Form(...)
 ):
-    print(f"[on_publish] Stream {name} started by client {addr} in app {app}")
+    logger.debug(f"[on_publish] Stream {name} started by client {addr} in app {app}")
     if app != 'live':
         # Will allow streaming but not added to queuing mechanism. TODO: Block this for security purposes
         return JSONResponse(status_code=200, content={"message": f"Not handling this app: {app}"})
@@ -28,7 +32,7 @@ async def on_publish(
 
         if name not in stream_queue:
             process_manager.stream_queue.queue_client_stream(name)
-            print(f"Added {name} to the queue")
+            logger.debug(f"Added {name} to the queue")
     return JSONResponse(status_code=200, content={"message": "Publishing allowed"})
 
 # RTMP on_publish_done callback
@@ -43,12 +47,12 @@ async def on_publish_done(
     addr: str = Form(...),
     call: str = Form(...)
 ):
-    print(f"[on_publish_done] Stream {name} stopped by client in app {app}")
+    logger.debug(f"[on_publish_done] Stream {name} stopped by client in app {app}")
     with queue_lock:
         if name and name == process_manager.current_stream_key:
             process_manager.stream_queue.unqueue_client_stream()
             process_manager.stream_queue.stop_current_stream()
-            print(f"Removed {name} from the queue")
+            logger.debug(f"Removed {name} from the queue")
 
     return JSONResponse(status_code=200, content={"message": "Publish done"})
 
@@ -64,9 +68,7 @@ async def on_done(
     addr: str = Form(...),
     call: str = Form(...)
 ):
-    if name:
-        print(name)
-    print(f"[on_done] Client disconnected from {app}")
+    logger.debug(f"[on_done] {name} client disconnected from {app}")
     return JSONResponse(status_code=200, content={"message": "Disconnected"})
 
 
@@ -102,8 +104,8 @@ async def on_connect(
 	# 1c. Obtain the DJ data object for later
 
 
-    print(payload)
-    print(f"[on_connect] Client connected to {app} from {addr}")
+    logger.debug(payload)
+    logger.debug(f"[on_connect] Client connected to {app} from {addr}")
     return JSONResponse(status_code=200, content={"message": "Connection allowed"})
 
 
@@ -127,7 +129,7 @@ async def on_connect(
     "call": call
     }
 
-    print(payload)
+    logger.debug(payload)
 
-    print(f"[on_play] Client is playing app: {app} from {addr}")
+    logger.debug(f"[on_play] Client is playing app: {app} from {addr}")
     return JSONResponse(status_code=200, content={"message": "Play allowed"})

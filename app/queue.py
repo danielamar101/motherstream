@@ -1,6 +1,9 @@
 
 import json
 import os
+import logging
+
+logger = logging.getLogger()
 
 class Singleton(type):
     _instances = {}
@@ -26,7 +29,7 @@ class StreamQueue(metaclass=Singleton):
             with open('../QUEUE.json','w') as queue_file:
                 queue_file.write(json.dumps(self.stream_queue))
         except Exception as e:
-            print(f'error: {e}')
+            logger.exception(f'error: {e}')
 
     def queue_client_stream(self,name):
         self.stream_queue.append(name)
@@ -46,7 +49,7 @@ class StreamQueue(metaclass=Singleton):
                 with open("./QUEUE.json",'r') as queue_file:
                     return json.load(queue_file)
         except json.JSONDecodeError as e:
-            print(f"Error reading input file: {e}")
+            logger.debug(f"Error reading input file: {e}")
         except Exception as e:
-            print(e)
+            logger.exception(e)
 

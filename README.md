@@ -1,6 +1,6 @@
-# Re-streaming Server with Queue Management and Monitoring
+# Motherstream
 
-This FastAPI application serves as a streaming server with a queuing mechanism for incoming RTMP streams. It handles stream connections, serves as a queue manager for re-streaming, and provides some administrative endpoints for monitoring and control.
+The Motherstream is a streaming server with a queuing mechanism for incoming RTMP streams. It handles stream connections, serves as a queue manager for ffmpeg re-streaming, and provides some administrative endpoints for monitoring and control.
 
 It is intended to be used in conjunction with nginx on a linux machine, and was originally designed to assist with automated stream management for livestreams.
 
@@ -24,11 +24,13 @@ This application handles RTMP streaming with a queue mechanism, managing the re-
 
 The application has the following main features:
 
-- Manage a queue of incoming streams.
+- Manage a queue of incoming streams. with rtmp directive hooks.
 - Start and stop the current stream.
 - Persist the queue state to a file.
 - Provide an HTML view of the queue.
-- Integrate with OBS (Open Broadcaster Software) for scene management when a stream ends.
+- Integrate with OBS (Open Broadcaster Software) for scene management when a stream ends to perform cleanup events.
+- WIP stream key -> DB lookup
+- 
 
 ## Requirements
 
