@@ -6,7 +6,7 @@ import os
 import logging
 
 from ..lock_manager import lock as queue_lock
-from .obs import OBSSocketManager
+from ..obs import OBSSocketManager
 
 logger = logging.getLogger(__name__)
 

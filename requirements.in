@@ -1,1 +1,2 @@
 fastapi[standard]==0.114.2
+sqlalchemy
