@@ -2,11 +2,8 @@ from fastapi.responses import JSONResponse
 from fastapi import Form, APIRouter
 
 from ..lock_manager import lock as queue_lock
-from ..queue import StreamQueue
-from .process_manager import ProcessManager
 
-stream_queue = StreamQueue()
-process_manager = ProcessManager()
+from main import process_manager
 rtmp_blueprint = APIRouter()
 
 # RTMP on_publish callback
@@ -27,10 +24,10 @@ async def on_publish(
         return JSONResponse(status_code=200, content={"message": f"Not handling this app: {app}"})
     
     with queue_lock:
-        actual_stream_queue = stream_queue.get_stream_queue()
+        stream_queue = process_manager.stream_queue.get_stream_queue_as_list()
 
-        if name not in actual_stream_queue:
-            stream_queue.queue_client_stream(name)
+        if name not in stream_queue:
+            process_manager.stream_queue.queue_client_stream(name)
             print(f"Added {name} to the queue")
     return JSONResponse(status_code=200, content={"message": "Publishing allowed"})
 
@@ -49,37 +46,9 @@ async def on_publish_done(
     print(f"[on_publish_done] Stream {name} stopped by client in app {app}")
     with queue_lock:
         if name and name == process_manager.current_stream_key:
-            stream_queue.unqueue_client_stream()
-            stream_queue.stop_current_stream()
+            process_manager.stream_queue.unqueue_client_stream()
+            process_manager.stream_queue.stop_current_stream()
             print(f"Removed {name} from the queue")
-
-    # SOURCE_NAME = 'MOTHERSTREAM'
-    # SCENE_NAME = 'MOTHERSTREAM 1'
-    # ws = obsws(OBS_HOST, OBS_PORT, OBS_PASSWORD)
-    # try:
-    #     ws.connect()
-
-    #     # 1. Get scene item list for MOTHERSTREAM 1
-    #     scene_item_list = ws.call(requests.GetSceneItemList(sceneName=SCENE_NAME))
-        
-    #     #2. Get sceneID from scene item dict
-    #     vlc_media_scene_id = None
-    #     for item in scene_item_list.datain['sceneItems']:
-    #         if item['sourceName'] == SOURCE_NAME:
-    #             vlc_media_scene_id = item['sceneItemId']
-    #             break;
-    #     if not vlc_media_scene_id:
-    #         raise Exception("Error getting vlc media source id. Cannot find proper source.")
-
-    #      #3. Hide the source in the current scene
-    #     ws.call(requests.SetSceneItemEnabled(sceneName=SCENE_NAME, sceneItemId=vlc_media_scene_id, sceneItemEnabled=False))
-    #     time.sleep(10)
-    #     ws.call(requests.SetSceneItemEnabled(sceneName=SCENE_NAME,  sceneItemId=vlc_media_scene_id, sceneItemEnabled=True))
-    #     print(f"Successfully turned on/off the source: {SOURCE_NAME}")
-    # except Exception as e:
-    #     print(f"Exception with OBS WebSocket: {e}")
-    # finally:
-    #     ws.disconnect()
 
     return JSONResponse(status_code=200, content={"message": "Publish done"})
 

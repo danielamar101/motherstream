@@ -1,16 +1,15 @@
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi import APIRouter
-from .process_manager import ProcessManager
-from ..queue import StreamQueue
+
+from main import process_manager
 
 http_blueprint = APIRouter()
-process_manager = ProcessManager()
-stream_queue = StreamQueue()
 
 @http_blueprint.get('/queue-json')
 async def queue_json():
-        actual_stream_queue = stream_queue.get_stream_queue()
-        return JSONResponse(content=actual_stream_queue)
+        stream_queue = process_manager.stream_queue.get_stream_queue_as_list()
+        print(stream_queue)
+        return JSONResponse(content=stream_queue)
 
 
 @http_blueprint.get("/queue-list",response_class=HTMLResponse)
@@ -48,6 +47,9 @@ async def queue_list():
                         // Create a new unordered list element
                         const ul = document.createElement('ul');
 
+                        if (data.length === 0) {{
+                            queueList.innerHTML = '<p>The queue is empty.</p>';
+                        }}
                         if (data.length > 0) {{
                             nowPlaying.textContent = `Now Playing: ${{data[0]}}`;
                             // Iterate over the JSON data and create list items

@@ -29,9 +29,9 @@ class ProcessManager(metaclass=Singleton):
     ffmpeg_out_log = None
     stream_queue = None
 
-    def __init__(self, ffmpeg_out_log=None):
+    def __init__(self, stream_queue, ffmpeg_out_log=None):
         self.ffmpeg_out_log = ffmpeg_out_log
-        self.stream_queue = StreamQueue()
+        self.stream_queue = stream_queue
 
     def log_ffmpeg_output(self,pipe, prefix):
         try:
@@ -54,6 +54,8 @@ class ProcessManager(metaclass=Singleton):
             print(f"Invalid stream name: {stream_key}")
             raise Exception(f"Invalid stream name. Not starting stream.") 
 
+        self.current_stream_key = stream_key
+
         # build motherstream restream command
         ffmpeg_cmd = [
             'ffmpeg', "-rw_timeout", "5000000", '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}', '-flush_packets', '0', '-fflags', '+genpts', '-max_interleave_delta', '0', '-map', '0:v?', '-map', '0:a?',
@@ -71,7 +73,6 @@ class ProcessManager(metaclass=Singleton):
             return
         print("...done")
 
-        self.current_stream_key = stream_key
 
         print(f"Started streaming live/{stream_key} to motherstream/live")
 
@@ -116,7 +117,7 @@ class ProcessManager(metaclass=Singleton):
         while True:
             with queue_lock:
                 # If no current stream and there are streams in the queue
-                actual_stream_queue = self.stream_queue.get_stream_queue()
+                actual_stream_queue = self.stream_queue.get_stream_queue_as_list()
                 if not self.current_stream_process and actual_stream_queue:
                     print("Starting a stream...")
                     next_stream = actual_stream_queue[0] 

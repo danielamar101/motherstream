@@ -17,7 +17,7 @@ class StreamQueue(metaclass=Singleton):
     def __init__(self, saved_state=[]):
         self.stream_queue = saved_state
 
-    def get_stream_queue(self):
+    def get_stream_queue_as_list(self):
         return self.stream_queue
     
         # save updated queue state to persistent store.
