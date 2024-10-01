@@ -8,6 +8,9 @@ import bcrypt
 def get_user(db: Session, user_id: int):
     return db.query(models.User).filter(models.User.id == user_id).first()
 
+def get_user_by_stream_key(db: Session, stream_key: int):
+    return db.query(models.User).filter(models.User.stream_key == stream_key).first()
+
 
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
@@ -22,7 +25,7 @@ def create_user(db: Session, user: schemas.User):
     salt = bcrypt.gensalt()
     hashed_password = bcrypt.hashpw(password.encode('utf-8'),salt)
 
-    db_user = models.User(email=user.email, hashed_password=hashed_password, stream_key=user.stream_key, ip_address=user.ip_address)
+    db_user = models.User(email=user.email, hashed_password=hashed_password, stream_key=user.stream_key, ip_address=user.ip_address, dj_name=user.dj_name)
     
     db.add(db_user)
     db.commit()

@@ -10,10 +10,6 @@ from ..obs import OBSSocketManager
 
 logger = logging.getLogger(__name__)
 
-stream_host = os.environ.get('HOST')
-rtmp_port = os.environ.get('RTMP_PORT')
-if not stream_host or not rtmp_port:
-    raise Exception("Error: HOST and RTMP_PORT environment variables must be set.")
 
 class Singleton(type):
     _instances = {}
@@ -50,11 +46,12 @@ class ProcessManager(metaclass=Singleton):
 
     # Function to start re-streaming a user's stream to motherstream
     def start_stream(self,stream_key: str):
-        global stream_host, rtmp_port
-        # Sanitize stream_key
-        if not re.match(r'^[A-Za-z0-9_-]+$', stream_key):
-            logger.exception(f"Invalid stream name: {stream_key}")
-            raise Exception(f"Invalid stream name. Not starting stream.") 
+        stream_host = os.environ.get('HOST')
+        rtmp_port = os.environ.get('RTMP_PORT')
+        
+        # TODO: Move this app validation up some levels
+        if not stream_host or not rtmp_port:
+            raise Exception("Error: HOST and RTMP_PORT environment variables must be set.")
 
         self.current_stream_key = stream_key
 
@@ -88,7 +85,7 @@ class ProcessManager(metaclass=Singleton):
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stdout, "[FFmpeg stdout]"), daemon=True).start()
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stderr, "[FFmpeg stderr]"), daemon=True).start()
 
-        self.disable_gstreamer_source(only_off=True)
+        self.disable_gstreamer_source(only_off=False)
 
     # Function to stop the current re-streaming process
     # Returns stopped stream key
@@ -137,11 +134,11 @@ class ProcessManager(metaclass=Singleton):
         while True:
             with queue_lock:
                 # If no current stream and there are streams in the queue
-                stream_queue_as_list = self.stream_queue.get_stream_queue_as_list()
+                current_streamer = self.stream_queue.current_streamer()
                 if not self.current_stream_process: 
-                    if stream_queue_as_list:
+                    if current_streamer:
                         logger.debug("Starting a stream...")
-                        next_stream = stream_queue_as_list[0] 
+                        next_stream = current_streamer.stream_key
                         try:
                             self.start_stream(next_stream)
                         except Exception as e:

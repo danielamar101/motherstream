@@ -3,6 +3,7 @@ from fastapi import Form, APIRouter
 
 from main import process_manager
 from ..lock_manager import lock as queue_lock
+from .validation import ensure_valid_user
 
 import logging
 
@@ -25,16 +26,20 @@ async def on_publish(
     addr: str = Form(...),
     call: str = Form(...)
 ):
-    logger.debug(f"[on_publish] Stream {name} started by client {addr} in app {app}")
+    logger.info(f"[on_publish] Stream {name} started by client {addr} in app {app}")
+    print("got here")
     if app != 'live':
         # Will allow streaming but not added to queuing mechanism. TODO: Block this for security purposes
         return JSONResponse(status_code=200, content={"message": f"Not handling this app: {app}"})
     
     with queue_lock:
-        stream_queue = process_manager.stream_queue.get_stream_queue_as_list()
-
-        if name not in stream_queue:
-            process_manager.stream_queue.queue_client_stream(name)
+        stream_queue = process_manager.stream_queue.get_dj_name_queue_list()
+        user = ensure_valid_user(name)
+        if not user:
+            return JSONResponse(status_code=401, content={"message": "Invalid stream key. you do not have permission to join the queue."})
+        
+        if user.dj_name not in stream_queue:
+            process_manager.stream_queue.queue_client_stream(user)
             logger.debug(f"Added {name} to the queue")
     return JSONResponse(status_code=200, content={"message": "Publishing allowed"})
 
@@ -99,13 +104,6 @@ async def on_connect(
 }
     #TODO: Implement auth logic here.
     # NOTE: the call var to distinguish between play/publish 
-    # 
-    # Specifications:
-    # 1. Authenticate stream key/IP address
-	# 1a. Check if DJ is registered in DB
-	# 1b. Check if IP address matches expected
-	# 1c. Obtain the DJ data object for later
-
 
     logger.debug(payload)
     logger.debug(f"[on_connect] Client connected to {app} from {addr}")

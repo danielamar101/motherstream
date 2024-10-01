@@ -6,6 +6,7 @@ class UserBase(BaseModel):
     stream_key: str
     email: str
     ip_address: str
+    dj_name: str
 
     class Config:
         orm_model = True

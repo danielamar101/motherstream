@@ -17,6 +17,7 @@ class User(Base):
     stream_key = Column(String, unique=True)
     email = Column(String, unique=True, index=True)
     timezone = Column(String, default='')
+    dj_name = Column(String)
     
     ip_address = Column(String, default='')
 

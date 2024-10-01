@@ -85,7 +85,7 @@ class OBSSocketManager():
             print("TOGGLING NEXT STREAM IS LOADING MSG...")
 
             only_off = False
-            if not self.stream_queue.get_stream_queue_as_list():
+            if not self.stream_queue.get_dj_name_queue_list():
                 only_off = True
 
             self.toggle_obs_source(source_name=source_name,scene_name=scene_name,toggle_timespan=toggle_timespan, only_off=only_off)
