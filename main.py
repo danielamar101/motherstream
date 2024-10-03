@@ -35,12 +35,12 @@ async def lifespan(app: FastAPI):
 
     try:
         logger.debug("Killing ffmpeg...")
-        if stream_queue.get_stream_queue_as_list():
+        if stream_queue.get_dj_name_queue_list():
             process_manager.current_stream_process.wait(timeout=2)
         logger.debug("...done.")
     except Exception as e:
         logger.exception(e)
-        if stream_queue.get_stream_queue_as_list():
+        if stream_queue.get_dj_name_queue_list():
             process_manager.current_stream_process.kill()
 
     ffmpeg_out_log.write("FFMPEG PROCESS KILLED. GOODBYE!")

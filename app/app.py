@@ -14,9 +14,11 @@ def register_app(app,process_manager):
 
     from app.api.rtmp_endpoints import rtmp_blueprint
     from app.api.http_endpoints import http_blueprint
+    from app.db.main import db_blueprint
 
     app.include_router(rtmp_blueprint)
     app.include_router(http_blueprint)
+    app.include_router(db_blueprint)
 
 
 

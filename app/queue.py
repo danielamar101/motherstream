@@ -3,6 +3,8 @@ import json
 import os
 import logging
 
+from .db.schemas import User
+
 logger = logging.getLogger(__name__)
 
 class Singleton(type):
@@ -20,8 +22,18 @@ class StreamQueue(metaclass=Singleton):
     def __init__(self, saved_state=[]):
         self.stream_queue = saved_state
 
-    def get_stream_queue_as_list(self):
-        return self.stream_queue
+    def get_dj_name_queue_list(self):
+        dj_name_list_to_return = []
+        for user in self.stream_queue:
+            dj_name_list_to_return.append(user.dj_name)
+
+        return dj_name_list_to_return
+    
+    def current_streamer(self):
+        if self.stream_queue:
+            return self.stream_queue[0]
+        else:
+            return None
     
         # save updated queue state to persistent store.
     def _write_persistent_state(self):
@@ -31,8 +43,9 @@ class StreamQueue(metaclass=Singleton):
         except Exception as e:
             logger.exception(f'error: {e}')
 
-    def queue_client_stream(self,name):
-        self.stream_queue.append(name)
+    def queue_client_stream(self,user: User):
+        
+        self.stream_queue.append(user)
         self._write_persistent_state()
 
     def unqueue_client_stream(self):
