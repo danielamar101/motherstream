@@ -26,10 +26,15 @@ class ProcessManager(metaclass=Singleton):
     stream_queue = None
     obs_socket_manager = None
 
-    def __init__(self, stream_queue, ffmpeg_out_log=None):
+    stream_start_time = None
+    #How much time in minutes between DJ swapping
+    swap_interval = None
+
+    def __init__(self, stream_queue, ffmpeg_out_log=None, swap_interval=60):
         self.ffmpeg_out_log = ffmpeg_out_log
         self.stream_queue = stream_queue
         self.obs_socket_manager = OBSSocketManager(stream_queue)
+        self.swap_interval = swap_interval
 
     def log_ffmpeg_output(self,pipe, prefix):
         try:
@@ -128,6 +133,12 @@ class ProcessManager(metaclass=Singleton):
         except Exception as e:
             logger.exception(f"Error toggling off {scene_name}:{source_name}. {e}")
         
+    # Helper function to check if the swap interval has elapsed
+    def has_swap_interval_elapsed(self):
+        if self.stream_start_time is None:
+            return False
+        return (time.time() - self.stream_start_time) >= self.swap_interval
+    
     # Background thread to manage the stream queue
     def process_queue(self):
 
@@ -141,11 +152,18 @@ class ProcessManager(metaclass=Singleton):
                         next_stream = current_streamer.stream_key
                         try:
                             self.start_stream(next_stream)
+                            self.stream_start_time = time.time()
                         except Exception as e:
                             logger.exception(f"Error starting stream: {e}")
                             self.stream_queue.unqueue_client_stream()  
                     else:
                         self.disable_gstreamer_source(only_off=True)
+                else:
+                    # Check if the swap interval has passed and end the current stream if it has
+                    if self.has_swap_interval_elapsed():
+                        logger.debug(f"Swap interval of {self.swap_interval} seconds elapsed, stopping current stream.")
+                        self.stop_current_stream()
+                        self.stream_queue.unqueue_client_stream()
         
                 # If the current stream has ended (ffmpeg process has exited)
                 if self.current_stream_process and self.current_stream_process.poll() is not None:
@@ -154,6 +172,8 @@ class ProcessManager(metaclass=Singleton):
 
                     self.stop_current_stream()
                     self.stream_queue.unqueue_client_stream()
+
+                
 
 
             time.sleep(3) 

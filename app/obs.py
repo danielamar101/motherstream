@@ -77,8 +77,8 @@ class OBSSocketManager():
                 logger.info("...done toggling.")
             except Exception as e:
                 logger.info(f"Exception with OBS WebSocket: {e}")
-                print("error")
                 print(e)
+                time.sleep(toggle_timespan)
 
     def flash_loading_message(self,source_name,scene_name, toggle_timespan):
         while True:
