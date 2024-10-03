@@ -24,23 +24,35 @@ body {
   }
   
   .hand {
-    width: 50%;
-    background: black;
     position: absolute;
-    top: 50%;
-    transform-origin: 100%;
-    transform: rotate(0deg);
+    width: 6px; /* Width of the hand */
+    background: black;
+    left: 50%;
+    transform-origin: 50% 100%; /* Rotate around bottom center */
+    transform: translate(-50%, -100%); /* Position the base at the clock center */
     transition: transform 0.05s ease-in-out;
   }
   
   .hour-hand {
-    height: 6px;
-    left: 50%;
-    /* Stuck at 12 o'clock (rotate to -90deg) */
-    transform: rotate(-90deg);
+    top: 50%;
+    height: 25%; /* Length of the hour hand */
+    /* Hour hand is static, pointing at 12 o'clock */
+    transform: translate(-50%, -100%) rotate(0deg); /* Pointing upwards */
   }
   
   .minute-hand {
-    height: 4px;
+    height: 50%; /* Length of the minute hand */
+    bottom: 50%;
+  }
+  
+  .center-dial {
+    position: absolute;
+    top: 50%;
     left: 50%;
+    width: 20px; /* Size of the center dial */
+    height: 20px;
+    background: black; /* Color of the center dial */
+    border-radius: 50%; /* Make it circular */
+    transform: translate(-50%, -50%); /* Center the dial */
+    z-index: 10; /* Ensure it appears above the hands */
   }
