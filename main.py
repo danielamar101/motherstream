@@ -60,10 +60,9 @@ app = FastAPI(lifespan=lifespan)
 
 stream_queue = StreamQueue()
 ffmpeg_out_log = open('ffmpeg.log','w', encoding='utf-8')
-swap_interval = 15
 logger.info("Starting process manager...")
 
-process_manager = ProcessManager(stream_queue,ffmpeg_out_log, swap_interval) 
+process_manager = ProcessManager(stream_queue,ffmpeg_out_log) 
 
 register_exception(app)
 register_app(app, process_manager)
