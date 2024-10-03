@@ -6,7 +6,7 @@
         body { color: white; font-family: Arial, sans-serif; }
         ul { list-style: none; padding-left: 20px; }
         li { color: white; margin-bottom: 10px; }
-    </style>
+        </style>
 </head>
 <body>
     <h1>Queue</h1>
@@ -18,8 +18,10 @@
     <script>
         async function fetchQueue() {
             try {
-                const response = await fetch('http://192.168.1.100:8483/queue-json');
-                const data = await response.json()['stream_queue'];
+                const response = await fetch('http://raspberry:8483/queue-json');
+                const json_data = await response.json();
+                
+                const data = json_data['stream_queue']
                 const queueList = document.getElementById('queue-list');
                 const nowPlaying = document.getElementById('next-up');
                 
@@ -30,7 +32,7 @@
                 // Create a new unordered list element
                 const ul = document.createElement('ul');
 
-                if (data[strea].length === 0) {
+                if (data.length === 0) {
                     queueList.innerHTML = '<p>The queue is empty.</p>';
                 }
                 if (data.length > 0) {
@@ -59,6 +61,7 @@
 
         // Refresh the queue every 10 seconds
         setInterval(fetchQueue, 10000);
+
     </script>
 </body>
 </html>

@@ -36,4 +36,9 @@ class TimeManager():
         except (ValueError, TypeError) as e:
             logger.info(f"Failed to change swap interval. Invalid value given: {swap_interval}. Error: {str(e)}")
             
-    
+    def get_remaining_time(self):
+        if self.stream_start_time is None:
+            return self.swap_interval
+        elapsed_time = time.time() - self.stream_start_time
+        remaining_time = self.swap_interval - elapsed_time
+        return max(0, remaining_time)  # Ensure no negative time

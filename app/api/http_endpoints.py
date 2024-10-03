@@ -13,14 +13,31 @@ async def queue_json():
         stream_queue = process_manager.stream_queue.get_dj_name_queue_list()
 
         return_content = {
-             "stream_queue": stream_queue
+             "stream_queue": stream_queue,
         }
-        return JSONResponse(content=stream_queue)
+        return JSONResponse(content=return_content)
 
 
 @http_blueprint.get("/queue-list",response_class=HTMLResponse)
 async def queue_list(request: Request):
     return templates.TemplateResponse("queue-list.html", {"request":request})
+
+@http_blueprint.get("/timer-data",response_class=HTMLResponse)
+async def queue_list():
+        if process_manager.time_manager: 
+            remaining_time = process_manager.time_manager.get_remaining_time()
+        else:
+            remaining_time = 0
+
+        return_content = {
+                "remaining_time": remaining_time
+        }
+        return JSONResponse(content=return_content)
+
+
+@http_blueprint.get("/timer-page",response_class=HTMLResponse)
+async def queue_list(request: Request):
+    return templates.TemplateResponse("timer.html", {"request":request})
 
 @http_blueprint.post("/override-queue")
 async def override_queue_manually(

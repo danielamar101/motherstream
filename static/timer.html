@@ -1,0 +1,51 @@
+<html>
+<head>
+    <title>Queue</title>
+    <style>
+        body { color: white; font-family: Arial, sans-serif; }
+        ul { list-style: none; padding-left: 20px; }
+        li { color: white; margin-bottom: 10px; }
+        </style>
+</head>
+<body>
+    <h2 id="demo"></h2>
+    <script>
+        async function fetchTimerData(){
+                // Digital timer here
+                // Update the countdown every 1 second
+                var x = setInterval(async function() {
+                    
+                    const response = await fetch('http://raspberry:8483/timer-data');
+                    const data = await response.json();
+                    var remaining_time = data['remaining_time'];
+                    console.log(remaining_time)
+                    // Time calculations for days, hours, minutes, and seconds
+                    var hours = Math.floor((remaining_time % (60 * 60 * 24)) / (60 * 60));
+                    var minutes = Math.floor((remaining_time % (60 * 60)) / 60);
+                    var seconds = Math.floor(remaining_time % 60);
+
+                    
+                    // Decrease the remaining time by 1 second
+                    remaining_time--;
+                    
+                    // If the countdown is finished, write some text
+                    if (remaining_time === 0) {
+                        document.getElementById("demo").innerHTML = "00:00:00";
+                    }else{
+                        // Ensure each time unit has two digits (HH:MM:SS)
+                        const formattedHours = hours.toString().padStart(2, '0');
+                        const formattedMinutes = minutes.toString().padStart(2, '0');
+                        const formattedSeconds = seconds.toString().padStart(2, '0');
+                        
+                        // Display the result in the element with id="demo"
+                        document.getElementById("demo").innerHTML = `${formattedHours}:${formattedMinutes}:${formattedSeconds}`;
+                    }
+                }, 1000);
+        }
+
+
+        setTimeout(fetchTimerData, 3000);
+
+    </script>
+</body>
+</html>

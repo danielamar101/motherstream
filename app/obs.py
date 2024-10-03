@@ -51,7 +51,7 @@ class OBSSocketManager():
             logger.exception(e)
 
     def toggle_obs_source(self,source_name, scene_name, toggle_timespan, only_off=False):
-        logger.info(f"TOGGLING OBS {scene_name}:{source_name}...")
+        logger.debug(f"TOGGLING OBS {scene_name}:{source_name}...")
         with obs_lock:
             try:
                 # 1. Get scene item list for MOTHERSTREAM 1
@@ -82,7 +82,7 @@ class OBSSocketManager():
 
     def flash_loading_message(self,source_name,scene_name, toggle_timespan):
         while True:
-            print("TOGGLING NEXT STREAM IS LOADING MSG...")
+            logger.debug("TOGGLING NEXT STREAM IS LOADING MSG...")
 
             only_off = False
             if not self.stream_queue.get_dj_name_queue_list():
