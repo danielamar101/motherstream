@@ -86,6 +86,7 @@ class ProcessManager(metaclass=Singleton):
 
         self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
         self.obs_socket_manager.toggle_timer_source(only_off=False)
+        
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stdout, "[FFmpeg stdout]"), daemon=True).start()
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stderr, "[FFmpeg stderr]"), daemon=True).start()
 
@@ -127,7 +128,7 @@ class ProcessManager(metaclass=Singleton):
         self.stream_queue.unqueue_client_stream()
         self.obs_socket_manager.toggle_gstreamer_source(only_off=True)
         self.obs_socket_manager.toggle_timer_source(only_off=True)
-        self.toggle_loading_message_source(only_off=True)
+        self.obs_socket_manager.toggle_loading_message_source(only_off=True)
         self.time_manager = None
 
     # Background thread to manage the stream queue

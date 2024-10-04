@@ -106,11 +106,11 @@
             }
         }
 
+        // Initial fetch on load
+        fetchQueue();
         // Refresh the queue every 10 seconds
         setInterval(fetchQueue, 10000);
 
-        // Initial fetch on load
-        fetchQueue();
     </script>
 </body>
 </html>
