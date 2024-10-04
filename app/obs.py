@@ -4,6 +4,8 @@ import logging
 from obswebsocket import obsws, requests
 import threading
 
+from websocket import WebSocketConnectionClosedException
+
 from app.lock_manager import obs_lock
 
 logger = logging.getLogger(__name__)
@@ -38,14 +40,14 @@ class OBSSocketManager():
             self.obs_websocket.connect()
             logger.info("Connected to obs websocket.")
         except Exception as e:
-            logger.exception(e)
+            logger.error(e)
 
     def disconnect(self):
         try:
             self.obs_websocket.disconnect()
             logger.info("Disconnected from obs websocket.")
         except Exception as e:
-            logger.exception(e)
+            logger.error(e)
 
     def is_source_visible(self, source_name, scene_name):
         logger.debug(f"Checking visibility for {scene_name}:{source_name}...")
@@ -100,8 +102,13 @@ class OBSSocketManager():
                     self.obs_websocket.call(requests.SetSceneItemEnabled(sceneName=scene_name, sceneItemId=scene_id, sceneItemEnabled=True))
                     time.sleep(toggle_timespan)
                     logger.info("...done toggling.")
+            except WebSocketConnectionClosedException as e:
+                logger.error("WebSocket is closed. Is the OBS app open?")
+                logger.error("Attempting to restart connection to the websocket...")
+                self.__connect()
+                time.sleep(10)
             except Exception as e:
-                logger.info(f"Exception with OBS WebSocket: {e}")
+                logger.error(f"Exception with OBS WebSocket: {e}")
                 time.sleep(toggle_timespan)
 
     def flash_loading_message(self):
