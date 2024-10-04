@@ -27,7 +27,6 @@ async def on_publish(
     call: str = Form(...)
 ):
     logger.info(f"[on_publish] Stream {name} started by client {addr} in app {app}")
-    print("got here")
     if app != 'live':
         # Will allow streaming but not added to queuing mechanism. TODO: Block this for security purposes
         return JSONResponse(status_code=200, content={"message": f"Not handling this app: {app}"})

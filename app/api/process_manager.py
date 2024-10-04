@@ -84,10 +84,11 @@ class ProcessManager(metaclass=Singleton):
         logger.debug("...done")
         logger.info(f"Started streaming live/{stream_key} to motherstream/live")
 
+        self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
+        self.obs_socket_manager.toggle_timer_source(only_off=False)
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stdout, "[FFmpeg stdout]"), daemon=True).start()
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stderr, "[FFmpeg stderr]"), daemon=True).start()
 
-        self.disable_gstreamer_source(only_off=False)
 
     # Function to stop the current re-streaming process
     # Returns stopped stream key
@@ -121,20 +122,15 @@ class ProcessManager(metaclass=Singleton):
             self.ffmpeg_out_log.write("FFMPEG process killed.\n")
             return to_return
         
-    def disable_gstreamer_source(self, only_off=False):
-        source_name = 'GMOTHERSTREAM'
-        scene_name = 'MOTHERSTREAM'
-        try:
-            self.obs_socket_manager.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=2, only_off=only_off)
-            logger.info(f"DONE TOGGLING OBS {scene_name}:{source_name} PIPELINE OFF.")
-        except Exception as e:
-            logger.exception(f"Error toggling off {scene_name}:{source_name}. {e}")
-        
+    def _cleanup_stream(self):
+        self.stop_current_stream()
+        self.stream_queue.unqueue_client_stream()
+        self.obs_socket_manager.toggle_gstreamer_source(only_off=True)
+        self.obs_socket_manager.toggle_timer_source(only_off=True)
+        self.time_manager = None
 
-    
     # Background thread to manage the stream queue
     def process_queue(self):
-
         while True:
             with queue_lock:
                 # If no current stream and there are streams in the queue
@@ -151,26 +147,20 @@ class ProcessManager(metaclass=Singleton):
                             logger.exception(f"Error starting stream: {e}")
                             self.stream_queue.unqueue_client_stream()  
                     else:
-                        self.disable_gstreamer_source(only_off=True)
+                        #TODO: create method of toggling only off once by knowing status of source
+                        self.obs_socket_manager.toggle_gstreamer_source(only_off=True)
+                        self.obs_socket_manager.toggle_timer_source(only_off=True)
                 else:
                     # Check if the swap interval has passed and end the current stream if it has
                     if self.time_manager.has_swap_interval_elapsed():
                         logger.debug(f"Swap interval of {self.time_manager.get_swap_interval()} seconds elapsed, stopping current stream.")
-                        self.stop_current_stream()
-                        self.stream_queue.unqueue_client_stream()
-                        self.time_manager = None
+                        self._cleanup_stream()
         
                 # If the current stream has ended (ffmpeg process has exited)
                 if self.current_stream_process and self.current_stream_process.poll() is not None:
                     logger.debug(f"ffmpeg process for {self.current_stream_key} ended")
-                    self.disable_gstreamer_source(only_off=True)
-
-                    self.stop_current_stream()
-                    self.stream_queue.unqueue_client_stream()
-
-                
-
-
+                    self._cleanup_stream()
+            # Polling sleep time
             time.sleep(3) 
     
 

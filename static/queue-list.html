@@ -55,10 +55,6 @@
                 console.error('Error fetching queue:', error);
             }
         }
-
-        // Fetch and render the queue immediately
-        fetchQueue();
-
         // Refresh the queue every 10 seconds
         setInterval(fetchQueue, 10000);
 

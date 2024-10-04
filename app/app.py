@@ -14,11 +14,16 @@ def register_app(app,process_manager):
 
     from app.api.rtmp_endpoints import rtmp_blueprint
     from app.api.http_endpoints import http_blueprint
+
+    # this initializes the database connection. TODO: Load this earlier
     from app.db.main import db_blueprint
 
     app.include_router(rtmp_blueprint)
     app.include_router(http_blueprint)
     app.include_router(db_blueprint)
+
+    # Reload the queue object in the event of server shutdown during stream
+    process_manager.stream_queue.persist_queue()
 
 
 
