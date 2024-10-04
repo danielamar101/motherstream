@@ -60,7 +60,7 @@ class ProcessManager(metaclass=Singleton):
         # build motherstream restream command
         ffmpeg_cmd = [
             'ffmpeg', 
-            "-rw_timeout", "5000000", 
+            "-rw_timeout", "10000000", 
             '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}', 
             '-flush_packets', '0', 
             '-fflags', '+genpts', 
@@ -86,7 +86,7 @@ class ProcessManager(metaclass=Singleton):
 
         self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
         self.obs_socket_manager.toggle_timer_source(only_off=False)
-        
+
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stdout, "[FFmpeg stdout]"), daemon=True).start()
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stderr, "[FFmpeg stderr]"), daemon=True).start()
 

@@ -122,7 +122,7 @@ class OBSSocketManager():
         try:
             self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=1.5, only_off=only_off)
         except Exception as e:
-            logger.exception(f"Error toggling off {scene_name}:{source_name}. {e}")
+            logger.error(f"Error toggling off {scene_name}:{source_name}. {e}")
 
     def toggle_gstreamer_source(self, only_off=False):
         source_name = 'GMOTHERSTREAM'
@@ -130,12 +130,15 @@ class OBSSocketManager():
         try:
             self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=1, only_off=only_off)
         except Exception as e:
-            logger.exception(f"Error toggling off {scene_name}:{source_name}. {e}")
+            logger.error(f"Error toggling off {scene_name}:{source_name}. {e}")
     
     def toggle_timer_source(self, only_off=False):
-        source_name = 'TIMER'
+        source_name = 'TIMER1'
+        time_remaining_text = 'TIME REMAINING'
         scene_name = 'MOTHERSTREAM'
+
         try:
             self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=1, only_off=only_off)
+            self.toggle_obs_source(source_name=time_remaining_text, scene_name=scene_name, toggle_timespan=1, only_off=only_off)
         except Exception as e:
-            logger.exception(f"Error toggling off {scene_name}:{source_name}. {e}")
+            logger.error(f"Error toggling off {scene_name}:{source_name}. {e}")
