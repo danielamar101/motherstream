@@ -30,10 +30,9 @@ class OBSSocketManager():
         logger.debug("Connecting to websocket...")
         self.__connect()
 
-        loading_msg_source_name = "LOADING"
-        loading_msg_scene_name = "MOTHERSTREAM"
+       
 
-        self.toggle_loading_message(source_name=loading_msg_source_name,scene_name=loading_msg_scene_name,toggle_timespan=1.5)
+        self.start_loading_message_thread()
         self.toggle_obs_source(source_name="Queue", scene_name="MOTHERSTREAM", toggle_timespan=1)
     
     def __connect(self):
@@ -107,15 +106,19 @@ class OBSSocketManager():
                 logger.info(f"Exception with OBS WebSocket: {e}")
                 time.sleep(toggle_timespan)
 
-    def flash_loading_message(self,source_name,scene_name, toggle_timespan):
+    def flash_loading_message(self):
+        loading_msg_source_name = "LOADING"
+        loading_msg_scene_name = "MOTHERSTREAM"
+        toggle_timespan=1.5
         while True:
             if self.stream_queue.get_dj_name_queue_list():
                 logger.debug("TOGGLING NEXT STREAM IS LOADING MSG...")
-                self.toggle_obs_source(source_name=source_name,scene_name=scene_name,toggle_timespan=toggle_timespan, only_off=False)
+                self.toggle_obs_source(source_name=loading_msg_source_name,scene_name=loading_msg_scene_name,toggle_timespan=toggle_timespan, only_off=False)
+            
 
-    def toggle_loading_message(self,source_name, scene_name, toggle_timespan):
+    def start_loading_message_thread(self):
         print("Starting loading message toggle thread..")
-        threading.Thread(target=self.flash_loading_message, args=(source_name, scene_name,toggle_timespan), daemon=True).start()
+        threading.Thread(target=self.flash_loading_message, daemon=True).start()
 
     def toggle_gstreamer_source(self, only_off=False):
         source_name = 'GMOTHERSTREAM'

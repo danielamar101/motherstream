@@ -127,6 +127,7 @@ class ProcessManager(metaclass=Singleton):
         self.stream_queue.unqueue_client_stream()
         self.obs_socket_manager.toggle_gstreamer_source(only_off=True)
         self.obs_socket_manager.toggle_timer_source(only_off=True)
+        self.toggle_loading_message_source(only_off=True)
         self.time_manager = None
 
     # Background thread to manage the stream queue

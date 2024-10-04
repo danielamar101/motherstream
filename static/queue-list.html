@@ -1,30 +1,81 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-    <title>Queue</title>
+    <meta charset="UTF-8">
     <meta http-equiv="refresh" content="10">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Queue</title>
     <style>
-        body { color: white; font-family: Arial, sans-serif; }
-        ul { list-style: none; padding-left: 20px; }
-        li { color: white; margin-bottom: 10px; }
-        </style>
+        body {
+            background-color: #121212;
+            color: #f1f1f1;
+            font-family: 'Helvetica', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            /* text-align: center; */
+        }
+
+        h5 {
+            font-size: 1rem;
+            margin: 5px 0;
+            -webkit-text-stroke: 0.5px black; /* Outline for h5 */
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5); 
+        }
+
+        #queue-list {
+            width: 80%;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        ul {
+            list-style: none;
+            padding-left: 0;
+            margin-top: 10px;
+        }
+
+        li {
+            background-color: #1E1E1E;
+            margin: 5px 0;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 1.2rem;
+        }
+
+        .now-playing {
+            font-weight: bold;
+            color: #FFD700;
+        }
+
+        p {
+            font-size: 0.5rem;
+            margin-top: 20px;
+        }
+    </style>
 </head>
 <body>
-    <h1>Queue</h1>
-    <h5 id="next-up">Now Playing:</h5>
-    <h5>Next up:</h5>
-    <div id="queue-list">
-        <!-- The list will be rendered here -->
+    <div>
+        <h5 id="next-up" class="now-playing">Now Playing:</h5>
+        <h5>Next Up:</h5>
+        <div id="queue-list">
+            <!-- Queue items will be dynamically rendered here -->
+        </div>
     </div>
+
     <script>
         async function fetchQueue() {
             try {
                 const response = await fetch('http://raspberry:8483/queue-json');
                 const json_data = await response.json();
-                
-                const data = json_data['stream_queue']
+
+                const data = json_data['stream_queue'];
                 const queueList = document.getElementById('queue-list');
                 const nowPlaying = document.getElementById('next-up');
-                
+
                 // Clear the current list
                 queueList.innerHTML = '';
                 nowPlaying.textContent = 'Now Playing:';
@@ -35,17 +86,16 @@
                 if (data.length === 0) {
                     queueList.innerHTML = '<p>The queue is empty.</p>';
                 }
+
                 if (data.length > 0) {
                     nowPlaying.textContent = `Now Playing: ${data[0]}`;
-                    // Iterate over the JSON data and create list items
+                    nowPlaying.classList.add('now-playing');
 
-
-                    data.forEach((item,index) => {
-                        if (index !== 0) {
-                            const li = document.createElement('li');
-                            li.textContent = item;
-                            ul.appendChild(li);
-                        }
+                    // Iterate over the remaining queue items and add them to the list
+                    data.slice(1).forEach(item => {
+                        const li = document.createElement('li');
+                        li.textContent = item;
+                        ul.appendChild(li);
                     });
                 }
 
@@ -55,9 +105,12 @@
                 console.error('Error fetching queue:', error);
             }
         }
+
         // Refresh the queue every 10 seconds
         setInterval(fetchQueue, 10000);
 
+        // Initial fetch on load
+        fetchQueue();
     </script>
 </body>
 </html>
