@@ -8,6 +8,7 @@ import logging
 from ..lock_manager import lock as queue_lock
 from .time_manager import TimeManager
 from ..obs import OBSSocketManager
+from .nginx_stream_manager import drop_stream_publisher, record_stream
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class ProcessManager(metaclass=Singleton):
 
     current_stream_process = None
     current_stream_key = None
+    current_dj_name = None
     ffmpeg_out_log = None
     stream_queue = None
     obs_socket_manager = None
@@ -47,15 +49,19 @@ class ProcessManager(metaclass=Singleton):
             pipe.close()
 
     # Function to start re-streaming a user's stream to motherstream
-    def start_stream(self,stream_key: str):
+    def start_stream(self,streamer):
         stream_host = os.environ.get('HOST')
         rtmp_port = os.environ.get('RTMP_PORT')
+
+        stream_key = streamer.stream_key
+        dj_name = streamer.dj_name
         
         # TODO: Move this app validation up some levels
         if not stream_host or not rtmp_port:
             raise Exception("Error: HOST and RTMP_PORT environment variables must be set.")
 
         self.current_stream_key = stream_key
+        self.current_dj_name = dj_name
 
         # build motherstream restream command
         ffmpeg_cmd = [
@@ -86,6 +92,7 @@ class ProcessManager(metaclass=Singleton):
 
         self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
         self.obs_socket_manager.toggle_timer_source(only_off=False)
+        record_stream(stream_key,dj_name,'start')
 
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stdout, "[FFmpeg stdout]"), daemon=True).start()
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stderr, "[FFmpeg stderr]"), daemon=True).start()
@@ -108,10 +115,15 @@ class ProcessManager(metaclass=Singleton):
 
             logger.debug(f"Stopped streaming {self.current_stream_key}")
 
+            # Tell nginx to drop the connection
+            record_stream(self.current_stream_key,self.current_dj_name,'stop')
+            drop_stream_publisher(self.current_stream_key)
+            # stop recording here
             to_return = self.current_stream_key
 
             self.current_stream_process = None
             self.current_stream_key = None
+            self.current_dj_name = None
 
             logger.debug("For safe measure, killing all running ffmpeg processes...")
             try:
@@ -140,9 +152,9 @@ class ProcessManager(metaclass=Singleton):
                 if not self.current_stream_process: 
                     if current_streamer:
                         logger.debug("Starting a stream...")
-                        next_stream = current_streamer.stream_key
+                        next_streamer = current_streamer
                         try:
-                            self.start_stream(next_stream)
+                            self.start_stream(next_streamer)
                             self.time_manager = TimeManager()
 
                         except Exception as e:

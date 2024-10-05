@@ -6,5 +6,6 @@
 - https://github.com/arut/nginx-rtmp-module/wiki/Control-module
 - https://nginx-rtmp.blogspot.com/2013/06/multi-worker-statistics-and-control.html
 
-- DJ timer 
 - Notification service
+- Look into cloudflare tunnel thing majig
+- Display time zone with DJ
