@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="10">
+    <meta http-equiv="refresh" content="3">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Queue</title>
     <style>
@@ -62,6 +62,7 @@
         <h5 id="next-up" class="now-playing">Now Playing:</h5>
         <h5>Next Up:</h5>
         <div id="queue-list">
+            <p>The queue is empty.</p>
             <!-- Queue items will be dynamically rendered here -->
         </div>
     </div>
@@ -109,7 +110,7 @@
         // Initial fetch on load
         fetchQueue();
         // Refresh the queue every 10 seconds
-        setInterval(fetchQueue, 10000);
+        setInterval(fetchQueue, 5000);
 
     </script>
 </body>
