@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="3">
+    <!-- <meta http-equiv="refresh" content="3"> -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Queue</title>
     <style>
@@ -62,7 +62,6 @@
         <h5 id="next-up" class="now-playing">Now Playing:</h5>
         <h5>Next Up:</h5>
         <div id="queue-list">
-            <p>The queue is empty.</p>
             <!-- Queue items will be dynamically rendered here -->
         </div>
     </div>
@@ -84,9 +83,9 @@
                 // Create a new unordered list element
                 const ul = document.createElement('ul');
 
-                if (data.length === 0) {
-                    queueList.innerHTML = '<p>The queue is empty.</p>';
-                }
+                // if (data.length === 0) {
+                //     queueList.innerHTML = '<p>The queue is empty.</p>';
+                // }
 
                 if (data.length > 0) {
                     nowPlaying.textContent = `Now Playing: ${data[0]}`;
