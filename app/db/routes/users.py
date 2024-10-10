@@ -48,13 +48,11 @@ def update_user_me(user_update: schemas.UserUpdateMe, current_user: schemas.User
 
 @user_router.patch("/api/v1/users/me/password", response_model=schemas.Message)
 def update_password_me(update_password: schemas.UpdatePassword, current_user: schemas.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    # Implement password update logic
-    user = crud.get_user(db, user_id=current_user.id)
-    if not ph.verify(update_password.current_password, user.password):
+
+    try:
+        crud.update_password_me(db,user_id=current_user.id,update_password=update_password)
+    except Exception as e:
         raise HTTPException(status_code=400, detail="Incorrect current password")
-    new_hashed_password = ph.hash(update_password.new_password)
-    user.password = new_hashed_password
-    db.commit()
     return {"message": "Password updated successfully"}
 
 @user_router.post("/api/v1/users/signup", response_model=schemas.User)

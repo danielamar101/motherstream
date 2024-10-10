@@ -67,10 +67,26 @@ def update_user_me(db: Session, user_id: int, user_update: schemas.UserUpdateMe)
     db_user = get_user(db, user_id)
     if db_user:
         db_user.dj_name = user_update.dj_name or db_user.dj_name
+        db_user.email = user_update.email or db_user.email
+        db_user.stream_key = user_update.stream_key or db_user.stream_key
+
         db.commit()
         db.refresh(db_user)
     return db_user
 
+def update_password_me(db: Session, user_id: int, update_password: schemas.UpdatePassword):
+    user = get_user(db, user_id=user_id)
+
+    try:
+        if not ph.verify(user.password,update_password.current_password):
+            raise Exception("Incorrect current password")
+        new_hashed_password = ph.hash(update_password.new_password)
+        user.password = new_hashed_password
+        db.commit()
+    except Exception as e:
+        print(f"Error updating password: {e}")
+        return False
+    
 def delete_user(db: Session, user_id: int):
     db_user = get_user(db, user_id)
     if db_user:
