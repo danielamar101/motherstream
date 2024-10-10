@@ -63,6 +63,7 @@ export type UserCreate = {
 export type UserPublic = {
   email: string
   dj_name: string 
+  stream_key: string
   is_active?: boolean
   is_superuser?: boolean
   id: string

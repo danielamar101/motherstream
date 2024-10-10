@@ -53,9 +53,12 @@ const UserInformation = () => {
     mutationFn: (data: UserUpdateMe) =>
       UsersService.updateUserMe({ requestBody: data }),
     onSuccess: (data) => {
-      logout()
       showToast("Success!", "User updated successfully.", "success")
-      showToast("Success!", `Please sign back in with email ${data.email}`, "success")
+      if (data.email !== null){
+        logout()
+        showToast("Success!", `Please sign back in with email ${data.email}`, "success")
+      }
+      // TODO: More toast notifs based on what changed.
     },
     onError: (err: ApiError) => {
       handleError(err, showToast)
@@ -85,6 +88,17 @@ const UserInformation = () => {
           as="form"
           onSubmit={handleSubmit(onSubmit)}
         >
+          <FormControl mt={4} isInvalid={!!errors.stream_key}>
+            <FormLabel color={color} htmlFor="dj_name">
+              Stream Key
+            </FormLabel>
+              <Text size="md" py={2} isTruncated maxWidth="250px">
+                {currentUser?.stream_key}
+              </Text>
+            {errors.stream_key && (
+              <FormErrorMessage>{errors.stream_key.message}</FormErrorMessage>
+            )}
+          </FormControl>
           <FormControl mt={4} isInvalid={!!errors.dj_name}>
             <FormLabel color={color} htmlFor="dj_name">
               DJ Name

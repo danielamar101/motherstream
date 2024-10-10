@@ -22,7 +22,7 @@ if not JWT_SECRET:
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-from argon2 import PasswordHasher
+from argon2 import PasswordHasher, exceptions
 ph = PasswordHasher()
 
 
@@ -36,7 +36,7 @@ def authenticate_user(db: Session, email: str, password: str):
             return False
         if not ph.verify(user.password, password):
             return False
-    except Exception as e:
+    except exceptions.VerifyMismatchError as e:
         logger.exception(f"Error finding user or verifying password.")
         return False
     return user

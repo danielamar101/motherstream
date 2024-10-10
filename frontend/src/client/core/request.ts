@@ -217,6 +217,7 @@ export const sendRequest = async <T>(
   } catch (error) {
     const axiosError = error as AxiosError<T>
     if (axiosError.response) {
+      // @ts-ignore
       if (axiosError.response.data.detail === 'Could not validate credentials' && axiosError.response.status === 401){
         localStorage.removeItem("access_token")
       }
