@@ -30,7 +30,7 @@ const UserInformation = () => {
   const color = useColorModeValue("inherit", "ui.light")
   const showToast = useCustomToast()
   const [editMode, setEditMode] = useState(false)
-  const { user: currentUser } = useAuth()
+  const { user: currentUser, logout } = useAuth()
   const {
     register,
     handleSubmit,
@@ -41,7 +41,6 @@ const UserInformation = () => {
     mode: "onBlur",
     criteriaMode: "all",
     defaultValues: {
-      full_name: currentUser?.full_name,
       email: currentUser?.email,
     },
   })
@@ -53,8 +52,10 @@ const UserInformation = () => {
   const mutation = useMutation({
     mutationFn: (data: UserUpdateMe) =>
       UsersService.updateUserMe({ requestBody: data }),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      logout()
       showToast("Success!", "User updated successfully.", "success")
+      showToast("Success!", `Please sign back in with email ${data.email}`, "success")
     },
     onError: (err: ApiError) => {
       handleError(err, showToast)
@@ -84,28 +85,27 @@ const UserInformation = () => {
           as="form"
           onSubmit={handleSubmit(onSubmit)}
         >
-          <FormControl>
-            <FormLabel color={color} htmlFor="name">
-              Full name
+          <FormControl mt={4} isInvalid={!!errors.dj_name}>
+            <FormLabel color={color} htmlFor="dj_name">
+              DJ Name
             </FormLabel>
             {editMode ? (
               <Input
-                id="name"
-                {...register("full_name", { maxLength: 30 })}
+                id="dj_name"
+                {...register("dj_name", {
+                  required: "DJ Name is required",
+                })}
                 type="text"
                 size="md"
                 w="auto"
               />
             ) : (
-              <Text
-                size="md"
-                py={2}
-                color={!currentUser?.full_name ? "ui.dim" : "inherit"}
-                isTruncated
-                maxWidth="250px"
-              >
-                {currentUser?.full_name || "N/A"}
+              <Text size="md" py={2} isTruncated maxWidth="250px">
+                {currentUser?.dj_name}
               </Text>
+            )}
+            {errors.dj_name && (
+              <FormErrorMessage>{errors.dj_name.message}</FormErrorMessage>
             )}
           </FormControl>
           <FormControl mt={4} isInvalid={!!errors.email}>

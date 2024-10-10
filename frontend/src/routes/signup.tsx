@@ -82,21 +82,6 @@ function SignUp() {
             alignSelf="center"
             mb={4}
           />
-          <FormControl id="full_name" isInvalid={!!errors.full_name}>
-            <FormLabel htmlFor="full_name" srOnly>
-              Full Name
-            </FormLabel>
-            <Input
-              id="full_name"
-              minLength={3}
-              {...register("full_name", { required: "Full Name is required" })}
-              placeholder="Full Name"
-              type="text"
-            />
-            {errors.full_name && (
-              <FormErrorMessage>{errors.full_name.message}</FormErrorMessage>
-            )}
-          </FormControl>
           <FormControl id="email" isInvalid={!!errors.email}>
             <FormLabel htmlFor="username" srOnly>
               Email
@@ -109,6 +94,22 @@ function SignUp() {
               })}
               placeholder="Email"
               type="email"
+            />
+            {errors.email && (
+              <FormErrorMessage>{errors.email.message}</FormErrorMessage>
+            )}
+          </FormControl>
+          <FormControl id="dj_name" isInvalid={!!errors.dj_name}>
+            <FormLabel htmlFor="dj_name" srOnly>
+              DJ Name
+            </FormLabel>
+            <Input
+              id="dj_name"
+              {...register("dj_name", {
+                required: "DJ Name is required",
+              })}
+              placeholder="DJ Name"
+              type="text"
             />
             {errors.email && (
               <FormErrorMessage>{errors.email.message}</FormErrorMessage>

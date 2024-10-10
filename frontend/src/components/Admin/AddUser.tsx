@@ -45,7 +45,6 @@ const AddUser = ({ isOpen, onClose }: AddUserProps) => {
     criteriaMode: "all",
     defaultValues: {
       email: "",
-      full_name: "",
       password: "",
       confirm_password: "",
       is_superuser: false,
@@ -99,18 +98,6 @@ const AddUser = ({ isOpen, onClose }: AddUserProps) => {
               />
               {errors.email && (
                 <FormErrorMessage>{errors.email.message}</FormErrorMessage>
-              )}
-            </FormControl>
-            <FormControl mt={4} isInvalid={!!errors.full_name}>
-              <FormLabel htmlFor="name">Full name</FormLabel>
-              <Input
-                id="name"
-                {...register("full_name")}
-                placeholder="Full name"
-                type="text"
-              />
-              {errors.full_name && (
-                <FormErrorMessage>{errors.full_name.message}</FormErrorMessage>
               )}
             </FormControl>
             <FormControl mt={4} isRequired isInvalid={!!errors.password}>

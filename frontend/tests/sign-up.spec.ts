@@ -10,12 +10,10 @@ type OptionsType = {
 
 const fillForm = async (
   page: Page,
-  full_name: string,
   email: string,
   password: string,
   confirm_password: string,
 ) => {
-  await page.getByPlaceholder("Full Name").fill(full_name)
   await page.getByPlaceholder("Email").fill(email)
   await page.getByPlaceholder("Password", { exact: true }).fill(password)
   await page.getByPlaceholder("Repeat Password").fill(confirm_password)
@@ -54,12 +52,11 @@ test("Log In link is visible", async ({ page }) => {
 })
 
 test("Sign up with valid name, email, and password", async ({ page }) => {
-  const full_name = "Test User"
   const email = randomEmail()
   const password = randomPassword()
 
   await page.goto("/signup")
-  await fillForm(page, full_name, email, password, password)
+  await fillForm(page, email, password, password)
   await page.getByRole("button", { name: "Sign Up" }).click()
 })
 

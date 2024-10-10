@@ -232,18 +232,6 @@ export const $UserCreate = {
       type: "boolean",
       default: false,
     },
-    full_name: {
-      type: "any-of",
-      contains: [
-        {
-          type: "string",
-          maxLength: 255,
-        },
-        {
-          type: "null",
-        },
-      ],
-    },
     password: {
       type: "string",
       isRequired: true,
@@ -269,18 +257,6 @@ export const $UserPublic = {
       type: "boolean",
       default: false,
     },
-    full_name: {
-      type: "any-of",
-      contains: [
-        {
-          type: "string",
-          maxLength: 255,
-        },
-        {
-          type: "null",
-        },
-      ],
-    },
     id: {
       type: "string",
       isRequired: true,
@@ -302,18 +278,6 @@ export const $UserRegister = {
       isRequired: true,
       maxLength: 40,
       minLength: 8,
-    },
-    full_name: {
-      type: "any-of",
-      contains: [
-        {
-          type: "string",
-          maxLength: 255,
-        },
-        {
-          type: "null",
-        },
-      ],
     },
   },
 } as const
@@ -341,18 +305,6 @@ export const $UserUpdate = {
       type: "boolean",
       default: false,
     },
-    full_name: {
-      type: "any-of",
-      contains: [
-        {
-          type: "string",
-          maxLength: 255,
-        },
-        {
-          type: "null",
-        },
-      ],
-    },
     password: {
       type: "any-of",
       contains: [
@@ -371,18 +323,6 @@ export const $UserUpdate = {
 
 export const $UserUpdateMe = {
   properties: {
-    full_name: {
-      type: "any-of",
-      contains: [
-        {
-          type: "string",
-          maxLength: 255,
-        },
-        {
-          type: "null",
-        },
-      ],
-    },
     email: {
       type: "any-of",
       contains: [
