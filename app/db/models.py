@@ -1,10 +1,8 @@
 from fastapi import FastAPI
 
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
-from sqlalchemy.orm import relationship
+from sqlalchemy import Boolean, Column, Integer, String
 
 from .database import Base
-from pydantic import BaseModel, EmailStr
 
 
 app = FastAPI()
@@ -18,10 +16,8 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     timezone = Column(String, default='')
     dj_name = Column(String)
-    
-    ip_address = Column(String, default='')
 
-    hashed_password = Column(String)
+    password = Column(String)
     
     is_active = Column(Boolean, default=True)
 
