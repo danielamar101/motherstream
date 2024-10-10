@@ -30,7 +30,7 @@ const UserInformation = () => {
   const color = useColorModeValue("inherit", "ui.light")
   const showToast = useCustomToast()
   const [editMode, setEditMode] = useState(false)
-  const { user: currentUser } = useAuth()
+  const { user: currentUser, loginMutation } = useAuth()
   const {
     register,
     handleSubmit,
@@ -51,10 +51,19 @@ const UserInformation = () => {
   }
 
   const mutation = useMutation({
-    mutationFn: (data: UserUpdateMe) =>
-      UsersService.updateUserMe({ requestBody: data }),
-    onSuccess: () => {
-      showToast("Success!", "User updated successfully.", "success")
+    mutationFn: (data: UserUpdateMe) =>  UsersService.updateUserMe({ requestBody: data }),
+    onSuccess: async (updatedUser) => {
+
+      const loginData = {
+        username: updatedUser.email,
+        password: updatedUser.password // Ensure you have the user's password to log in again
+      }
+
+      try {
+        await loginMutation.mutateAsync(loginData)
+        showToast("Success!", "User updated successfully.", "success")
+      } catch{
+      }
     },
     onError: (err: ApiError) => {
       handleError(err, showToast)
