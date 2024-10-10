@@ -1,2 +1,5 @@
 fastapi[standard]==0.114.2
 sqlalchemy
+sentry-sdk[fast-api]
+pyjwt
+argon2-cffi

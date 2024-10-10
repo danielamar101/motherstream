@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+import sentry_sdk
+
 from contextlib import asynccontextmanager
 
 import subprocess
@@ -21,7 +23,17 @@ try:
 except Exception as e:
     logger.exception(e)
 
-
+SENTRY_DSN = os.environ.get("SENTRY_DSN")
+# sentry_sdk.init(
+#     dsn=SENTRY_DSN,
+#     # Set traces_sample_rate to 1.0 to capture 100%
+#     # of transactions for tracing.
+#     traces_sample_rate=1.0,
+#     # Set profiles_sample_rate to 1.0 to profile 100%
+#     # of sampled transactions.
+#     # We recommend adjusting this value in production.
+#     profiles_sample_rate=1.0,
+# )
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -56,7 +68,6 @@ async def lifespan(app: FastAPI):
     process_manager.obs_socket_manager.disconnect()
 
 app = FastAPI(lifespan=lifespan)
-
 
 stream_queue = StreamQueue()
 

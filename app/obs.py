@@ -109,7 +109,9 @@ class OBSSocketManager():
                 time.sleep(10)
             except Exception as e:
                 logger.error(f"Exception with OBS WebSocket: {e}")
-                time.sleep(toggle_timespan)
+                self.__disconnect()
+                self.__connect()
+                time.sleep(10)
 
     def flash_loading_message(self):
        

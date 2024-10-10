@@ -30,7 +30,7 @@
                     
                     // If the countdown is finished, write some text
                     if (remaining_time === 0) {
-                        document.getElementById("demo").innerHTML = "00:00:00";
+                        document.getElementById("demo").innerHTML = "";
                     }else{
                         // Ensure each time unit has two digits (HH:MM:SS)
                         const formattedHours = hours.toString().padStart(2, '0');
@@ -42,7 +42,7 @@
                     }
                 }, 1000);
         }
-
+        fetchTimerData()
 
         setTimeout(fetchTimerData, 3000);
 

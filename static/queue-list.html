@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="10">
+    <!-- <meta http-equiv="refresh" content="3"> -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Queue</title>
     <style>
@@ -83,9 +83,9 @@
                 // Create a new unordered list element
                 const ul = document.createElement('ul');
 
-                if (data.length === 0) {
-                    queueList.innerHTML = '<p>The queue is empty.</p>';
-                }
+                // if (data.length === 0) {
+                //     queueList.innerHTML = '<p>The queue is empty.</p>';
+                // }
 
                 if (data.length > 0) {
                     nowPlaying.textContent = `Now Playing: ${data[0]}`;
@@ -109,7 +109,7 @@
         // Initial fetch on load
         fetchQueue();
         // Refresh the queue every 10 seconds
-        setInterval(fetchQueue, 10000);
+        setInterval(fetchQueue, 5000);
 
     </script>
 </body>
