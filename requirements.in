@@ -3,3 +3,4 @@ sqlalchemy
 sentry-sdk[fast-api]
 pyjwt
 argon2-cffi
+discord.py

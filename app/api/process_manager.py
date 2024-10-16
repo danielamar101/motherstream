@@ -9,6 +9,7 @@ from ..lock_manager import lock as queue_lock
 from .time_manager import TimeManager
 from ..obs import OBSSocketManager
 from .nginx_stream_manager import drop_stream_publisher, record_stream
+from app.api.discord import send_discord_message
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class ProcessManager(metaclass=Singleton):
 
         stream_key = streamer.stream_key
         dj_name = streamer.dj_name
+        time_zone = streamer.timezone
         
         # TODO: Move this app validation up some levels
         if not stream_host or not rtmp_port:
@@ -94,6 +96,10 @@ class ProcessManager(metaclass=Singleton):
         self.obs_socket_manager.toggle_timer_source(only_off=False)
         record_stream(stream_key,dj_name,'start')
 
+
+        send_discord_message(f"{dj_name} has now started streaming!")
+
+
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stdout, "[FFmpeg stdout]"), daemon=True).start()
         threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stderr, "[FFmpeg stderr]"), daemon=True).start()
 
@@ -116,7 +122,10 @@ class ProcessManager(metaclass=Singleton):
             logger.debug(f"Stopped streaming {self.current_stream_key}")
 
             # Tell nginx to drop the connection
+
             record_stream(self.current_stream_key,self.current_dj_name,'stop')
+            send_discord_message(f"{self.current_dj_name} has stopped streaming.")
+
             drop_stream_publisher(self.current_stream_key)
             # stop recording here
             to_return = self.current_stream_key
