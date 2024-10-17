@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 class TimeManager():
 
     stream_start_time = None
-    swap_interval = 60
+    swap_interval = 6000
 
     def __init__(self):
         self.stream_start_time = time.time() 
