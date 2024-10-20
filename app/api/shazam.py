@@ -15,7 +15,6 @@ RATE = 44100           # Sample rate
 CHANNELS = 1           # Number of audio channels
 SECONDS = 10           # Duration to buffer before sending to Shazam
 FFMPEG_INPUT = "rtmp://192.168.1.100:1935/live/PJNUF61UGN"  # Replace with your RTMP input
-FFMPEG_OUTPUT = "pipe:1"  # Output to stdout
 
 async def recognize_song(shazam, audio_data):
     """
@@ -27,9 +26,9 @@ async def recognize_song(shazam, audio_data):
     try:
         # Use the correct method: recognize_song
         out = await shazam.recognize(audio_data)
-        print(json.dumps(out, indent=2))
+        logger.info(json.dumps(out, indent=2))
     except Exception as e:
-        print(f"Error recognizing song: {e}", file=sys.stderr)
+        logger.info(f"Error recognizing song: {e}", file=sys.stderr)
 
 def create_ffmpeg_process(input_url):
     """
@@ -87,8 +86,8 @@ async def stream_audio_to_shazam(process, shazam):
         while True:
             chunk = process.stdout.read(4096)  # Read in small chunks
             if not chunk:
-                print("No more data from FFmpeg.", file=sys.stderr)
-                break
+                logger.info("No more data from FFmpeg.")
+                time.sleep(2)
 
             buffer.write(chunk)
 
@@ -101,17 +100,20 @@ async def stream_audio_to_shazam(process, shazam):
                 # Convert PCM to WAV
                 wav_data = pcm_to_wav(pcm_data)
 
+                logger.info("Recognizing song.")
                 # Pass WAV data to Shazamio
                 await recognize_song(shazam, wav_data)
 
-                print("Sleeping.")
+                logger.info("Sleeping.")
                 time.sleep(10)
 
     except asyncio.CancelledError:
-        print("Streaming cancelled.", file=sys.stderr)
+        logger.info("Streaming cancelled.", file=sys.stderr)
     finally:
+        logger.info("Killing the shazam probe...")
         process.terminate()
         process.wait()
+        logger.info("Done killing the shazam probe.")
 
 async def main():
     """
@@ -121,13 +123,21 @@ async def main():
     process = create_ffmpeg_process(FFMPEG_INPUT)
     
     if not process.stdout:
-        print("Failed to open FFmpeg stdout.", file=sys.stderr)
+        logger.error("Failed to open FFmpeg stdout.", file=sys.stderr)
         return
 
     await stream_audio_to_shazam(process, shazam)
 
 if __name__ == "__main__":
+    logging_params = {
+        'level': logging.INFO,
+        'format': '%(asctime)s__[%(levelname)s, %(module)s.%(funcName)s](%(name)s)__[L%(lineno)d] %(message)s',
+    }
+
+    logging.basicConfig(**logging_params)
     try:
+
+        logger.info("Doing something")
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("Interrupted by user.", file=sys.stderr)
+        logger.info("Interrupted by user.", file=sys.stderr)
