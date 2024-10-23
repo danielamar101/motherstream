@@ -2,7 +2,8 @@ from fastapi import FastAPI
 import sentry_sdk
 
 from contextlib import asynccontextmanager
-
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 import subprocess
 import logging
 import os
@@ -66,8 +67,18 @@ async def lifespan(app: FastAPI):
         logger.info(f"Error trying to kill all ffmpeg processes: {e}")
 
     process_manager.obs_socket_manager.disconnect()
+middleware = [
+Middleware(
+    CORSMiddleware,
+    allow_origins=['*'],
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*']
+)
+]
 
-app = FastAPI(lifespan=lifespan)
+
+app = FastAPI(lifespan=lifespan, middleware=middleware)
 
 stream_queue = StreamQueue()
 

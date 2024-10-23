@@ -75,7 +75,7 @@ function SignUp() {
           centerContent
         >
           <Image
-            src={Logo}
+            src="/assets/images/logo.png"
             alt="FastAPI logo"
             height="auto"
             maxW="2xs"

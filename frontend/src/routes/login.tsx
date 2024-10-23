@@ -77,13 +77,22 @@ function Login() {
         centerContent
       >
         <Image
-          src={Logo}
-          alt="FastAPI logo"
+          src="/assets/images/logo.png"
+          alt="motherstream logo"
           height="auto"
           maxW="2xs"
           alignSelf="center"
           mb={4}
         />
+        <Text
+        fontSize="2xl"
+        fontWeight="bold"
+        textAlign="center"
+        mb={6}
+        color="#911c11"
+        >
+        Motherstream
+      </Text>
         <FormControl id="username" isInvalid={!!errors.username || !!error}>
           <Input
             id="username"

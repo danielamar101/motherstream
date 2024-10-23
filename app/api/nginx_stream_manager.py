@@ -29,6 +29,12 @@ def rename_latest_recording(dj_name, record_dir="/var/www/streams"):
         shutil.move(latest_file, new_file)
 
         logger.info(f"Renamed {latest_file} to {new_file}")
+    except shutil.Error as e:
+        print(f"Shutil error: {e}")
+    except FileNotFoundError as e:
+        print(f"File not found: {e}")
+    except PermissionError as e:
+        print(f"Permission error: {e}")
     except Exception as e:
         logger.error(f"Error trying to rename recording name: {e}")
 

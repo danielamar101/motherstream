@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 RATE = 44100           # Sample rate
 CHANNELS = 1           # Number of audio channels
 SECONDS = 10           # Duration to buffer before sending to Shazam
-FFMPEG_INPUT = "rtmp://192.168.1.100:1935/live/PJNUF61UGN"  # Replace with your RTMP input
+FFMPEG_INPUT = "rtmp://192.168.1.100:1935/live/G1PX9QGZZJ"  # Replace with your RTMP input
 
 async def recognize_song(shazam, audio_data):
     """

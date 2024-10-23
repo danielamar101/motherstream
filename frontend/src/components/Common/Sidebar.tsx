@@ -52,7 +52,7 @@ const Sidebar = () => {
           <DrawerBody py={8}>
             <Flex flexDir="column" justify="space-between">
               <Box>
-                <Image src={Logo} alt="logo" p={6} />
+                <Image src="public/assets/images/logo.png" alt="logo" p={6} />
                 <SidebarItems onClose={onClose} />
                 <Flex
                   as="button"
@@ -93,7 +93,7 @@ const Sidebar = () => {
           borderRadius={12}
         >
           <Box>
-            <Image src={Logo} alt="Logo" w="180px" maxW="2xs" p={6} />
+            <Image src="/assets/images/logo.png" alt="Logo" w="180px" maxW="2xs" p={6} />
             <SidebarItems />
           </Box>
           {currentUser?.email && (
