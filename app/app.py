@@ -19,7 +19,7 @@ def register_app(app,process_manager):
         "http://192.168.1.100:5173", 
         "http://localhost:5173",     
         "http://localhost", 
-        "https://always12.duckdns.org/"   , 
+        "https://always12.duckdns.org/", 
         "http://always12.duckdns.org/"    
     ]
 
