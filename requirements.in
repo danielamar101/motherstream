@@ -5,3 +5,5 @@ pyjwt
 argon2-cffi
 discord.py
 psycopg2-binary
+obs-websocket-py
+requests

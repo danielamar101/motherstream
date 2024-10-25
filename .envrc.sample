@@ -3,7 +3,28 @@ export SSH_USER=
 export HOST=
 export SSH_PORT=
 export RTMP_PORT=
-
-export OBS_HOST
+export SENTRY_DSN=
+export OBS_HOST=
 export OBS_PORT=
 export OBS_PASSWORD=
+export STAT_PORT=
+export JWT_SECRET=
+
+export SMPT_SERVER=
+export SMTP_PORT=
+export SMTP_USER=
+export SMTP_PASSWORD=
+
+export VITE_API_URL=
+
+export DISCORD_WEBHOOK_URL=
+export TOGGLE_DISCORD_NOTIFICATIONS=
+
+export LANG=
+export LC_ALL=
+
+export DB_HOST=
+export DB_PORT=
+export DB_PASSWORD=
+export DB_NAME=
+export DB_USER=

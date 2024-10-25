@@ -1,4 +1,4 @@
-name: motherstream-2
+name: motherstream
 channels:
   - conda-forge
   - defaults
