@@ -105,6 +105,7 @@ class OBSSocketManager():
             except WebSocketConnectionClosedException as e:
                 logger.error("WebSocket is closed. Is the OBS app open?")
                 logger.error("Attempting to restart connection to the websocket...")
+                self.disconnect()
                 self.__connect()
                 time.sleep(10)
             except Exception as e:
