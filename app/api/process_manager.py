@@ -66,19 +66,14 @@ class ProcessManager(metaclass=Singleton):
         self.current_dj_name = dj_name
 
         # build motherstream restream command
+        # https://stackoverflow.com/questions/48610579/use-ffmpeg-to-restream-rtmp-source-to-youtube-no-video-stream-in-output
         ffmpeg_cmd = [
-            'ffmpeg', 
-            "-rw_timeout", "10000000", 
-            '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}', 
-            '-flush_packets', '0', 
-            '-fflags', '+genpts', 
-            '-max_interleave_delta', '0', 
-            '-map', '0:v?', 
-            '-map', '0:a?',
-            '-copy_unknown', 
-            '-c', 'copy', 
-            '-f', 'flv', 
-            f'rtmp://{stream_host}:{rtmp_port}/motherstream/live'
+            "ffmpeg", "-rw_timeout", "10000000", "-probesize", "100M", "-analyzeduration", "20M", "-re",
+            '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}',  "-strict", "-2",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-map", "0:0", '-xerror',
+            "-map", "0:1", "-ar", "44100", "-ab", "128k", "-ac", "2", "-b:v", "6000k",
+            "-flags", "+global_header", "-bsf:a", "aac_adtstoasc", "-bufsize", "1000k",  "-preset", "veryfast", 
+            "-f", "flv", f'rtmp://{stream_host}:{rtmp_port}/motherstream/live'
         ]
 
         logger.info("Starting ffmpeg subprocess...")

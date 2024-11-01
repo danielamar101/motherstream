@@ -8,3 +8,6 @@
 - use shazam to block copyrighted music
 - Look into cloudflare tunnel thing majig
 - Display time zone with DJ
+
+- Change stream resolution to 1920 x 1080p
+- drop all publishers upon a 
