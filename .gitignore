@@ -8,3 +8,4 @@ ffmpeg.log
 QUEUE.json
 sql_app.db
 .env
+certs/

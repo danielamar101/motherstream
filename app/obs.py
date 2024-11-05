@@ -138,9 +138,10 @@ class OBSSocketManager():
         source_name = 'GMOTHERSTREAM'
         scene_name = 'MOTHERSTREAM'
         try:
-            logger.info("Sleeping before turning on gmotherstream source")
-            time.sleep(10)
-            self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=1, only_off=only_off)
+            # logger.info("Sleeping before turning on gmotherstream source")
+            # time.sleep(10)
+            # self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=1, only_off=only_off)
+            pass# skip turning this on for now
         except Exception as e:
             logger.error(f"Error toggling off {scene_name}:{source_name}. {e}")
     

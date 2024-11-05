@@ -69,7 +69,7 @@
     <script>
         async function fetchQueue() {
             try {
-                const response = await fetch('http://raspberry:8483/queue-json');
+                const response = await fetch('http://ec2-motherstream:8483/queue-json');
                 const json_data = await response.json();
 
                 const data = json_data['stream_queue'];

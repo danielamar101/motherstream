@@ -1,24 +1,40 @@
 version: '3.8'
 
 services:
-  motherstream:
-    container_name: motherstream
-    build:
-      context: .  # Use the current directory as build context
-      dockerfile: Dockerfile  # Specify the Dockerfile (if it's named differently, change it here)
-    network_mode: host  # Use host networking mode
-    env_file: .env
-      # Add as many environment variables as needed
-    # volumes:
-    #   - .:/app  # Mount current directory to /app inside container
-    restart: unless-stopped
+  # motherstream:
+  #   container_name: motherstream
+  #   build:
+  #     context: .  # Use the current directory as build context
+  #     dockerfile: Dockerfile  # Specify the Dockerfile (if it's named differently, change it here)
+  #   network_mode: host  # Use host networking mode
+  #   env_file: .env
+  #     # Add as many environment variables as needed
+  #   # volumes:
+  #   #   - .:/app  # Mount current directory to /app inside container
+  #   restart: unless-stopped
 
-  frontend:
-    container_name: frontend
+  # frontend:
+  #   container_name: frontend
+  #   build:
+  #     context: ./frontend  # Use the current directory as build context
+  #     dockerfile: Dockerfile  # Specify the Dockerfile (if it's named differently, change it here)
+  #   network_mode: host  # Use host networking mode
+  #   env_file: frontend/.env
+  #     # Add as many environment variables as needed
+  #   restart: unless-stopped
+
+  nginx-rtmp:
+    container_name: nginx
+    network_mode: host
     build:
-      context: ./frontend  # Use the current directory as build context
-      dockerfile: Dockerfile  # Specify the Dockerfile (if it's named differently, change it here)
-    network_mode: host  # Use host networking mode
-    env_file: frontend/.env
-      # Add as many environment variables as needed
-    restart: unless-stopped
+      context: ./nginx-config
+      dockerfile: Dockerfile
+    volumes: 
+      - ./nginx-config/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx-config/rtmp.conf:/etc/nginx/rtmp.conf
+      - ./nginx-config/https-config.conf:/etc/nginx/conf.d/https-config.conf
+      - ./certs/always12:/etc/letsencrypt/live/always12.duckdns.org/
+      - ./certs/always12wiki:/etc/letsencrypt/live/always12wiki.duckdns.org/
+      - ./certs/motherstream:/etc/letsencrypt/live/motherstream.duckdns.org/
+      - /var/www:/var/www
+

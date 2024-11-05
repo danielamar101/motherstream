@@ -15,7 +15,7 @@
                 // Update the countdown every 1 second
                 var x = setInterval(async function() {
                     
-                    const response = await fetch('http://raspberry:8483/timer-data');
+                    const response = await fetch('http://ec2-motherstream:8483/timer-data');
                     const data = await response.json();
                     var remaining_time = data['remaining_time'];
                     console.log(remaining_time)
