@@ -7,4 +7,3 @@ dependencies:
   - pip-tools
   - debugpy
   - fastapi[standard]==0.114.2
-  - obs-websocket-py

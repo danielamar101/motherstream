@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 NGINX_HOST = os.environ.get("HOST")
 CONTROL_PORT = str(os.environ.get("STAT_PORT"))
 
-def rename_latest_recording(dj_name, record_dir="/var/www/streams"):
+def rename_latest_recording(dj_name):
+    RECORD_DIR = os.environ.get("RECORD_DIR", "/var/www/streams/stream-recordings")
+    record_dir = RECORD_DIR 
 
     try:
         # Find the most recently added .flv file in the record directory

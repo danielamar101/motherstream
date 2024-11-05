@@ -24,11 +24,11 @@ class OBSSocketManager():
 
         self.stream_queue = stream_queue
 
-        OBS_HOST = os.environ.get("OBS_HOST")
-        OBS_PORT = os.environ.get("OBS_PORT")
-        OBS_PASSWORD = os.environ.get("OBS_PASSWORD")
+        self.OBS_HOST = os.environ.get("OBS_HOST")
+        self.OBS_PORT = os.environ.get("OBS_PORT")
+        self.OBS_PASSWORD = os.environ.get("OBS_PASSWORD")
 
-        self.obs_websocket = obsws(OBS_HOST, OBS_PORT, OBS_PASSWORD)
+        self.obs_websocket = obsws(self.OBS_HOST, self.OBS_PORT, self.OBS_PASSWORD)
         logger.debug("Connecting to websocket...")
         self.__connect()
 
@@ -105,14 +105,14 @@ class OBSSocketManager():
             except WebSocketConnectionClosedException as e:
                 logger.error("WebSocket is closed. Is the OBS app open?")
                 logger.error("Attempting to restart connection to the websocket...")
-                self.disconnect()
+                self.obs_websocket = obsws(self.OBS_HOST, self.OBS_PORT, self.OBS_PASSWORD)
                 self.__connect()
-                time.sleep(10)
+                time.sleep(2)
             except Exception as e:
                 logger.error(f"Exception with OBS WebSocket: {e}")
-                self.__disconnect()
+                self.obs_websocket = obsws(self.OBS_HOST, self.OBS_PORT, self.OBS_PASSWORD)
                 self.__connect()
-                time.sleep(10)
+                time.sleep(2)
 
     def flash_loading_message(self):
        
@@ -138,7 +138,10 @@ class OBSSocketManager():
         source_name = 'GMOTHERSTREAM'
         scene_name = 'MOTHERSTREAM'
         try:
-            self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=1, only_off=only_off)
+            # logger.info("Sleeping before turning on gmotherstream source")
+            # time.sleep(10)
+            # self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=1, only_off=only_off)
+            pass# skip turning this on for now
         except Exception as e:
             logger.error(f"Error toggling off {scene_name}:{source_name}. {e}")
     
