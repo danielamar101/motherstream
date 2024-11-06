@@ -10,8 +10,8 @@ import os
 
 from app.api.exceptions import register_exception
 from app.app import register_app
-from app.queue import StreamQueue
-from app.api.process_manager import ProcessManager
+from app.core.queue import StreamQueue
+from app.core.process_manager import ProcessManager
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

@@ -24,15 +24,8 @@ class TimeManager():
     
     def modify_swap_interval(self, swap_interval):
         try:
-            # Attempt to convert to an integer if it's a string
-            if isinstance(swap_interval, str):
-                swap_interval = int(swap_interval)
-            
-            if isinstance(swap_interval, int):
-                self.swap_interval = swap_interval
-                logger.info(f"Changed swap interval to {swap_interval}.")
-            else:
-                raise ValueError
+            self.swap_interval = swap_interval
+            logger.info(f"Changed swap interval to {swap_interval}.")
         except (ValueError, TypeError) as e:
             logger.info(f"Failed to change swap interval. Invalid value given: {swap_interval}. Error: {str(e)}")
             

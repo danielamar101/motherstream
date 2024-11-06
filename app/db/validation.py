@@ -1,6 +1,6 @@
 
-from ..db.crud import get_user_by_stream_key
-from ..db.main import get_db
+from .crud import get_user_by_stream_key
+from .main import get_db
 import logging
 import re
 from fastapi import Depends

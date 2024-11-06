@@ -4,9 +4,9 @@ import os
 from pathlib import Path
 import logging
 
-from .db.schemas import User
-from .db.crud import get_user
-from .db.main import get_db
+from ..db.schemas import User
+from ..db.crud import get_user
+from ..db.main import get_db
 
 logger = logging.getLogger(__name__)
 

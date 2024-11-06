@@ -9,7 +9,7 @@ We care about it because it can seem to handle stream reconnections better than 
 
 - Once it is up and running create a gstreamer source in OBS.
 
-- The following gstreamer pipeline will display an stream and will properly handle reconnects:
+- The following gstreamer pipeline will display a stream and will properly handle reconnects:
 
 rtmpsrc location=rtmp://<address>/app/key ! queue max-size-time=1000000000 max-size-bytes=10485760 max-size-buffers=1000 ! decodebin name=bin 
 bin. ! queue max-size-time=1000000000 ! videoconvert ! video/x-raw ! video.sink 

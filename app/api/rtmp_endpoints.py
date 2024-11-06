@@ -3,7 +3,7 @@ from fastapi import Form, APIRouter
 
 from main import process_manager
 from ..lock_manager import lock as queue_lock
-from .validation import ensure_valid_user
+from ..db.validation import ensure_valid_user
 
 import logging
 
@@ -101,7 +101,6 @@ async def on_connect(
     "epoch": epoch,
     "call": call
 }
-    #TODO: Implement auth logic here.
     # NOTE: the call var to distinguish between play/publish 
 
     logger.debug(payload)
