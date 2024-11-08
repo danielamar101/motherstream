@@ -79,30 +79,25 @@ class ProcessManager(metaclass=Singleton):
         self.current_stream_key = stream_key
         self.current_dj_name = dj_name
 
-        # Build GStreamer restream command
-        # This pipeline does the following:
-        # 1. Connects to the RTMP input stream.
-        # 2. Demuxes the FLV stream into audio and video.
-        # 3. Encodes video using x264 and audio using AAC.
-        # 4. Muxes the encoded streams back into FLV.
-        # 5. Sends the output to the RTMP destination.
         gstreamer_cmd = [
             "gst-launch-1.0",
             "-e",  # Ensure EOS is sent on interrupt
-            "rtmpsrc", f"location=rtmp://{stream_host}:{rtmp_port}/live/{stream_key}", "!",
-            "flvdemux", "name=demux",
-            "demux.audio", "!", "queue", "!",
+            "rtmpsrc", f"location=rtmp://{stream_host}:{rtmp_port}/live/{stream_key}", "timeout=10", "!",
+            "flvdemux", "name=demux", 
+            "demux.audio", "!", "queue", "!", "decodebin", "!",
             "audioconvert", "!", "audioresample", "!",
             "voaacenc", "bitrate=128000", "!",  # Set to match desired audio quality
             "queue", "!", "mux.",
-            "demux.video", "!", "queue", "!",
-            "videoconvert", "!", "x264enc", "bitrate=6000", "speed-preset=veryfast", "!",
+            "demux.video", "!", "queue", "!", "decodebin", "!", "videorate" "!",
+            "videoconvert", "!", "x264enc", "bitrate=3000", "tune=zerolatency", "speed-preset=veryslow", "!",
             "video/x-h264,profile=baseline", "!",  # Ensures compatibility
             "queue", "!", "mux.",
             "flvmux", "name=mux", "streamable=true", "!",
-            "rtmpsink", f"location=rtmp://{stream_host}:{rtmp_port}/motherstream/live"
+            "rtmpsink", f"location=rtmp://{stream_host}:{rtmp_port}/motherstream/live", "sync=false"
+            
         ]
 
+        
         logger.info("Starting GStreamer subprocess...")
         self.current_stream_process = subprocess.Popen(
             gstreamer_cmd,
@@ -169,7 +164,7 @@ class ProcessManager(metaclass=Singleton):
 
             logger.debug("For safe measure, killing all running ffmpeg processes...")
             try:
-                subprocess.run(["killall", "ffmpeg"], check=True)
+                subprocess.run(["killall", "gst-launch-1.0"], check=True)
                 logger.debug("Done killing all running ffmpeg processes.")
             except Exception as e:
                 logger.exception(f"Error trying to kill all ffmpeg processes. There are probably none left: {e}")
