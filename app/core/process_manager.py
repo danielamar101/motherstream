@@ -26,121 +26,174 @@ class ProcessManager(metaclass=Singleton):
     current_stream_process = None
     current_stream_key = None
     current_dj_name = None
-    ffmpeg_out_log = None
+    gstreamer_out_log = None
     stream_queue = None
     obs_socket_manager = None
     time_manager = None
 
     def __init__(self, stream_queue, ffmpeg_out_log=None):
-        self.ffmpeg_out_log = ffmpeg_out_log
+        self.gstreamer_out_log = ffmpeg_out_log
         self.stream_queue = stream_queue
         self.obs_socket_manager = OBSSocketManager(stream_queue)
 
-    def log_ffmpeg_output(self,pipe, prefix):
+    def log_gstreamer_output(self,pipe, prefix, log_file):
+        """
+        Logs the output from the GStreamer subprocess.
+
+        Args:
+            pipe: Stream to read from (stdout or stderr).
+            prefix: Prefix for each log line.
+            log_file: File object to write logs to.
+        """
         try:
             for line in iter(pipe.readline, ''):
                 if not line:
                     break
                 formatted_output = f"{prefix} {line.rstrip()}\n"
-                self.ffmpeg_out_log.write(formatted_output)
-                self.ffmpeg_out_log.flush()
+                log_file.write(formatted_output)
+                log_file.flush()
         except Exception as e:
-            logger.exception(f"Error reading FFmpeg output: {e}")
+            logger.exception(f"Error reading GStreamer output: {e}")
         finally:
             pipe.close()
 
-    # Function to start re-streaming a user's stream to motherstream
-    def start_stream(self,streamer):
+        # Function to start re-streaming a user's stream to motherstream
+    def start_stream(self, streamer):
+        """
+        Starts re-streaming the user's stream to motherstream using GStreamer.
+
+        Args:
+            streamer: Object containing stream details like stream_key, dj_name, etc.
+        """
         stream_host = os.environ.get('HOST')
         rtmp_port = os.environ.get('RTMP_PORT')
 
         stream_key = streamer.stream_key
         dj_name = streamer.dj_name
         time_zone = streamer.timezone
-        
-        # TODO: Move this app validation up some levels
+
+        # Validate environment variables
         if not stream_host or not rtmp_port:
             raise Exception("Error: HOST and RTMP_PORT environment variables must be set.")
 
         self.current_stream_key = stream_key
         self.current_dj_name = dj_name
 
-        # build motherstream restream command
-        # https://stackoverflow.com/questions/48610579/use-ffmpeg-to-restream-rtmp-source-to-youtube-no-video-stream-in-output
-        ffmpeg_cmd = [
-            "ffmpeg", "-rw_timeout", "4000000", "-probesize", "100M", "-analyzeduration", "20M", "-re",
-            '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}',  "-strict", "-2",
-            "-c:v", "h264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-map", "0:0", # '-crf', '35',
-            "-map", "0:1", "-ar", "44100", "-ab", "128k", "-ac", "2", # "-b:v", "6000k", 
-            "-flags", "+global_header", "-bsf:a", "aac_adtstoasc", "-bufsize", "1000k",  "-preset", "veryfast", 
-            "-f", "flv", f'rtmp://{stream_host}:{rtmp_port}/motherstream/live'
+        gstreamer_cmd = [
+            "gst-launch-1.0",
+            "-e",  # Ensure EOS is sent on interrupt
+            "rtmpsrc", f"location=rtmp://{stream_host}:{rtmp_port}/live/{stream_key}", "!",
+            "flvdemux", "name=demux", 
+            "demux.audio", "!", "queue", "!", "decodebin", "!",
+            "audioconvert", "!", "audioresample", "!",
+            "voaacenc", "bitrate=128000", "!",  # Set to match desired audio quality
+            "queue", "!", "mux.",
+            "demux.video", "!", "queue", "!", "decodebin", "!",
+            "videoconvert", "!", "x264enc", "bitrate=1000", "tune=zerolatency", "!",
+            "video/x-h264,profile=baseline", "!",  # Ensures compatibility
+            "queue", "!", "mux.",
+            "flvmux", "name=mux", "streamable=true", "!",
+            "rtmpsink", f"location=rtmp://{stream_host}:{rtmp_port}/motherstream/live",
+
+        ]
+        gstreamer_cmd = [
+            "gst-launch-1.0",
+            "-e",  # Ensure EOS is sent on interrupt
+            "rtmpsrc", f"location=rtmp://{stream_host}:{rtmp_port}/live/{stream_key}", "!",
+            # "flvdemux", "name=demux", 
+            # "demux.audio", "!", "queue", "!", "decodebin", "!",
+            # "audioconvert", "!", "audioresample", "!",
+            # "voaacenc", "bitrate=128000", "!",  # Set to match desired audio quality
+            # "queue", "!", "mux.",
+            # "demux.video", "!", "queue", "!", "decodebin", "!",
+            # "videoconvert", "!", "x264enc", "bitrate=1000", "tune=zerolatency", "!",
+            # "video/x-h264,profile=baseline", "!",  # Ensures compatibility
+            # "queue", "!", "mux.",
+            #"flvmux", "name=mux", 
+            #"streamable=true", "!",
+            "rtmpsink", f"location=rtmp://{stream_host}:{rtmp_port}/motherstream/live", "sync=false",
+
         ]
 
-        logger.info("Starting ffmpeg subprocess...")
-        self.current_stream_process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
         
+        logger.info("Starting GStreamer subprocess...")
+        self.current_stream_process = subprocess.Popen(
+            gstreamer_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        # Check if the process started successfully
         return_code = self.current_stream_process.poll()
         if return_code is not None:
-            logger.debug(f"FFmpeg process exited immediately with return code {return_code}")
+            logger.debug(f"GStreamer process exited immediately with return code {return_code}")
             return
-        
-        logger.debug("...done")
+
+        logger.debug("...GStreamer subprocess started successfully")
         logger.info(f"Started streaming live/{stream_key} to motherstream/live")
 
+        # Toggle OBS sources if necessary
         self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
         self.obs_socket_manager.toggle_timer_source(only_off=False)
-        record_stream(stream_key,dj_name,'start')
 
+        # Record the stream start (implement record_stream as needed)
+        record_stream(stream_key, dj_name, 'start')
 
+        # Send a Discord notification (implement send_discord_message as needed)
         send_discord_message(f"{dj_name} has now started streaming!")
 
-
-        threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stdout, "[FFmpeg stdout]"), daemon=True).start()
-        threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stderr, "[FFmpeg stderr]"), daemon=True).start()
-
+        # Start threads to log GStreamer output
+        threading.Thread(target=self.log_gstreamer_output, args=(self.current_stream_process.stdout, "[GStreamer stdout]", self.gstreamer_out_log), daemon=True).start()
+        threading.Thread(target=self.log_gstreamer_output, args=(self.current_stream_process.stderr, "[GStreamer stderr]", self.gstreamer_out_log), daemon=True).start()
 
     # Function to stop the current re-streaming process
     # Returns stopped stream key
     # It is not the responsibility of this function to manage the queue list. That should be done separate of this function
-    def stop_current_stream(self):
+    def stop_stream(self):
+
         if self.current_stream_process:
+            logger.info("Stopping GStreamer subprocess...")
+            self.current_stream_process.terminate()
             try:
-                logger.info("Terminating ffmpeg process...")
-                self.current_stream_process.terminate()
-                self.current_stream_process.wait(timeout=2)
-                logger.info("...ffmpeg process terminated.")
-            except Exception as e:
-                logger.exception(e)
+                self.current_stream_process.wait(timeout=10)
                 self.current_stream_process.kill()
-                logger.exception("...ffmpeg process killed!")
+                logger.info("GStreamer subprocess terminated gracefully.")
+            except subprocess.TimeoutExpired:
+                logger.warning("GStreamer subprocess did not terminate in time; killing it.")
+            finally:
+                self.current_stream_process = None   
+
+            self.obs_socket_manager.toggle_gstreamer_source(only_off=True)
+            self.obs_socket_manager.toggle_timer_source(only_off=True)   
 
             logger.debug(f"Stopped streaming {self.current_stream_key}")
 
-            # Tell nginx to drop the connection
-
+            # stop recording here
             record_stream(self.current_stream_key,self.current_dj_name,'stop')
             send_discord_message(f"{self.current_dj_name} has stopped streaming.")
 
+            # Tell nginx to drop the connection
             drop_stream_publisher(self.current_stream_key)
-            # stop recording here
             to_return = self.current_stream_key
 
-            self.current_stream_process = None
             self.current_stream_key = None
             self.current_dj_name = None
 
             logger.debug("For safe measure, killing all running ffmpeg processes...")
             try:
-                subprocess.run(["killall", "ffmpeg"], check=True)
+                subprocess.run(["killall", "gst-launch-1.0"], check=True)
                 logger.debug("Done killing all running ffmpeg processes.")
             except Exception as e:
-                logger.exception(f"Error trying to kill all ffmpeg processes: {e}")
+                logger.exception(f"Error trying to kill all ffmpeg processes. There are probably none left: {e}")
             
-            self.ffmpeg_out_log.write("FFMPEG process killed.\n")
+            self.gstreamer_out_log.write("FFMPEG process killed.\n")
             return to_return
+
         
     def _cleanup_stream(self):
-        self.stop_current_stream()
+        self.stop_stream()
         self.stream_queue.unqueue_client_stream()
         self.obs_socket_manager.toggle_gstreamer_source(only_off=True)
         self.obs_socket_manager.toggle_timer_source(only_off=True)

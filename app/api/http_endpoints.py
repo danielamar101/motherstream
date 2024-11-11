@@ -49,7 +49,7 @@ async def override_queue_manually(
 
 @http_blueprint.post("/kill_ffmpeg")
 async def kill_ffmpeg():
-    process_manager.stop_current_stream()
+    process_manager.stop_stream()
     return JSONResponse(status_code=200,content={"message": "stopped current stream"})
 
 @http_blueprint.post("/clear-queue")

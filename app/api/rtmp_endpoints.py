@@ -57,8 +57,7 @@ async def on_publish_done(
     logger.debug(f"[on_publish_done] Stream {name} stopped by client in app {app}")
     with queue_lock:
         if name and name == process_manager.current_stream_key:
-            process_manager.stream_queue.unqueue_client_stream()
-            process_manager.stream_queue.stop_current_stream()
+            process_manager._cleanup_stream()
             logger.debug(f"Removed {name} from the queue")
 
     return JSONResponse(status_code=200, content={"message": "Publish done"})
