@@ -88,35 +88,10 @@ class ProcessManager(metaclass=Singleton):
             "audioconvert", "!", "audioresample", "!",
             "voaacenc", "bitrate=128000", "!",  # Set to match desired audio quality
             "queue", "!", "mux.",
-            "demux.video", "!", "queue", "!", "decodebin", "!",
-            "videoconvert", "!", "x264enc", "bitrate=1000", "tune=zerolatency", "!",
-            "video/x-h264,profile=baseline", "!",  # Ensures compatibility
-            "queue", "!", "mux.",
+            "demux.video", "!", "queue", "!", "mux.",
             "flvmux", "name=mux", "streamable=true", "!",
             "rtmpsink", f"location=rtmp://{stream_host}:{rtmp_port}/motherstream/live",
-
         ]
-        gstreamer_cmd = [
-            "gst-launch-1.0",
-            "-e",  # Ensure EOS is sent on interrupt
-            "rtmpsrc", f"location=rtmp://{stream_host}:{rtmp_port}/live/{stream_key}", "!",
-            # "flvdemux", "name=demux", 
-            # "demux.audio", "!", "queue", "!", "decodebin", "!",
-            # "audioconvert", "!", "audioresample", "!",
-            # "voaacenc", "bitrate=128000", "!",  # Set to match desired audio quality
-            # "queue", "!", "mux.",
-            # "demux.video", "!", "queue", "!", "decodebin", "!",
-            # "videoconvert", "!", "x264enc", "bitrate=1000", "tune=zerolatency", "!",
-            # "video/x-h264,profile=baseline", "!",  # Ensures compatibility
-            # "queue", "!", "mux.",
-            #"flvmux", "name=mux", 
-            #"streamable=true", "!",
-            "rtmpsink", f"location=rtmp://{stream_host}:{rtmp_port}/motherstream/live", "sync=false",
-
-        ]
-
-
-        
         logger.info("Starting GStreamer subprocess...")
         self.current_stream_process = subprocess.Popen(
             gstreamer_cmd,
