@@ -3,29 +3,29 @@ version: '3.8'
 services:
   motherstream:
     container_name: motherstream
+    depends_on: 
+      - postgresql
     build:
       context: .  # Use the current directory as build context
       dockerfile: Dockerfile  # Specify the Dockerfile (if it's named differently, change it here)
-    network_mode: host  # Use host networking mode
     env_file: .env
-      # Add as many environment variables as needed
     # volumes:
     #   - .:/app  # Mount current directory to /app inside container
     restart: unless-stopped
 
   frontend:
     container_name: frontend
+    depends_on: 
+      - postgresql
     build:
       context: ./frontend  # Use the current directory as build context
       dockerfile: Dockerfile  # Specify the Dockerfile (if it's named differently, change it here)
-    network_mode: host  # Use host networking mode
     env_file: frontend/.env
       # Add as many environment variables as needed
     restart: unless-stopped
 
   nginx-rtmp:
     container_name: nginx
-    network_mode: host
     build:
       context: ./nginx-config
       dockerfile: Dockerfile
@@ -37,4 +37,19 @@ services:
       - ./certs/always12wiki:/etc/letsencrypt/live/always12wiki.duckdns.org/
       - ./certs/motherstream:/etc/letsencrypt/live/motherstream.duckdns.org/
       - /var/www:/var/www
+    ports:
+      - "1935:1935"  # RTMP
+      - "80:80"      # HTTP
+      - "443:443"    # HTTPS
+  pgdb:
+    container_name: postgresql
+    image: postgres:15
+    env_file: .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
 
+
+volumes:
+  postgres_data:
