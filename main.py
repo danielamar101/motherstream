@@ -11,7 +11,7 @@ import os
 from app.api.exceptions import register_exception
 from app.app import register_app
 from app.core.queue import StreamQueue
-from app.core.process_manager import ProcessManager
+from app.core.process_manager import StreamManager
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -44,29 +44,8 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("SERVER SHUTDOWN")
-    ffmpeg_out_log.write("SERVER IS SHUTTING DOWN. KILLING FFMPEG PROCESS...")
-
-    try:
-        logger.debug("Killing ffmpeg...")
-        if stream_queue.get_dj_name_queue_list():
-            process_manager.current_stream_process.wait(timeout=2)
-        logger.debug("...done.")
-    except Exception as e:
-        logger.exception(e)
-        if stream_queue.get_dj_name_queue_list():
-            process_manager.current_stream_process.kill()
-
-    ffmpeg_out_log.write("FFMPEG PROCESS KILLED. GOODBYE!")
-    ffmpeg_out_log.close()
-
-    logger.info("For safe measure, killing all running ffmpeg processes...")
-    try:
-        subprocess.run(["killall", "ffmpeg"], check=True)
-        logger.info("Done killing all running ffmpeg processes.")
-    except Exception as e:
-        logger.info(f"Error trying to kill all ffmpeg processes: {e}")
-
     process_manager.obs_socket_manager.disconnect()
+    
 middleware = [
 Middleware(
     CORSMiddleware,
@@ -86,7 +65,7 @@ stream_queue = StreamQueue()
 ffmpeg_out_log = open('ffmpeg.log','w', encoding='utf-8')
 logger.info("Starting process manager...")
 
-process_manager = ProcessManager(stream_queue,ffmpeg_out_log) 
+process_manager = StreamManager(stream_queue) 
 
 register_exception(app)
 register_app(app, process_manager)

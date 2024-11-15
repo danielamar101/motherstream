@@ -20,6 +20,7 @@ class Singleton(type):
 
 class StreamQueue(metaclass=Singleton):
 
+    last_stream_key = None
     stream_queue = []
     queue_file_path = Path(os.getcwd()) / 'QUEUE.json'
 
@@ -39,6 +40,14 @@ class StreamQueue(metaclass=Singleton):
     
     def current_streamer(self):
         if self.stream_queue:
+            return self.stream_queue[0]
+        else:
+            return None
+
+    def next_streamer(self):
+        if self.stream_queue and len(self.stream_queue) > 1:
+            return self.stream_queue[1]
+        elif self.stream_queue and len(self.stream_queue) is 1:
             return self.stream_queue[0]
         else:
             return None
@@ -63,7 +72,9 @@ class StreamQueue(metaclass=Singleton):
         self._write_persistent_state()
 
     def unqueue_client_stream(self):
-        self.stream_queue.pop(0)
+
+        last_user = self.stream_queue.pop(0)
+        self.last_stream_key = last_user.stream_key
         self._write_persistent_state()
 
     def clear_queue(self):

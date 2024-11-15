@@ -20,7 +20,8 @@ def register_app(app,process_manager):
         "http://localhost:5173",     
         "http://localhost", 
         "https://always12.duckdns.org/", 
-        "http://always12.duckdns.org/"    
+        "http://always12.duckdns.org/",
+        "http://raspberry:5173/"    
     ]
 
     # Add CORS middleware
@@ -30,7 +31,7 @@ def register_app(app,process_manager):
         allow_credentials=True,         # Allow cookies and authorization headers
         allow_methods=["*"],            # Allowed HTTP methods (GET, POST, etc.)
         allow_headers=["*"],            # Allowed HTTP headers
-        allow_origins=origins
+        allow_origins=["*"]
     )
 
     from app.api.rtmp_endpoints import rtmp_blueprint
