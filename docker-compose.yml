@@ -50,18 +50,4 @@ services:
     #   - 10800:10800/udp
     volumes:
       - /home/danielamar/Desktop/onyx:/data
-  # srs:
-  #   container_name: srs
-  #   network_mode: host
-  #   image: ossrs/srs:5
-  #   command: ["./objs/srs", "-c", "./conf/motherstream.conf"]
-  #   # ports:
-  #   #   - 2022:2022
-  #   #   - 443:2443
-  #   #   - 1937:1935
-  #   #   - 8080:8080
-  #   #   - 8000:8000/udp
-  #   #   - 10800:10800/udp
-  #   volumes:
-  #     - ./srs/motherstream.conf:/usr/local/srs/conf/motherstream.conf
-      # - ./srs:/usr/local/srs/conf/actual
+    restart: unless-stopped

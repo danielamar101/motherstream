@@ -40,7 +40,7 @@ SENTRY_DSN = os.environ.get("SENTRY_DSN")
 async def lifespan(app: FastAPI):
 
     logger.info("SERVER STARTUP.")
-
+    # Update stream queue vars upon startup
     yield
 
     logger.info("SERVER SHUTDOWN")

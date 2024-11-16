@@ -60,15 +60,7 @@ def record_stream(stream_key, dj_name, action):
     return response
 
 def drop_stream_publisher(stream_key):
-# curl -X POST http://raspberry:2022/terraform/v1/mgmt/streams/kickoff \
-# -H "Content-Type: application/json" \
-# -H "Authorization: Bearer srs-v2-a084f4b728964d3084564329affb906d" \
-# -d '{
-#   "token": "always12",
-#   "vhost": "__defaultVhost__",
-#   "app": "motherstream",
-#   "stream": "live"
-# }'
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": "Bearer srs-v2-a084f4b728964d3084564329affb906d" 
@@ -81,13 +73,34 @@ def drop_stream_publisher(stream_key):
     }
     logger.info("Kicking stream publisher...")
     try:
-        response = requests.post(f"http://raspberry:2022/terraform/v1/mgmt/streams/kickoff",json=params, headers=headers)
+        response = requests.post(f"http://localhost:2022/terraform/v1/mgmt/streams/kickoff",json=params, headers=headers)
         if response.status_code == 200:
             logger.info("Successfully dropped publisher.")
         else:
             logger.info("Failure dropping publisher.")
     except Exception as e:
         logger.error(f"Exception dropping publisher: {e}")
+
+    return response
+
+def get_stream_state():
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer srs-v2-a084f4b728964d3084564329affb906d" 
+    }
+
+    logger.info("Obtaining all streamer info ")
+    try:
+        response = requests.post(f"http://localhost:2022/terraform/v1/mgmt/streams/query",headers=headers)
+        if response.status_code == 200:
+            json_response = response.json()
+            streams = [client["stream"] for client in json_response["data"]["streams"]]
+            return streams
+        else:
+            logger.info(f"Failure querying stream state. Code: {response.status_code}")
+    except Exception as e:
+        logger.error(f"Exception querying stream state.: {e}")
 
     return response
 
