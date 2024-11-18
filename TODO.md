@@ -10,3 +10,5 @@
 
 - Change stream resolution to 1920 x 1080p
 - drop all publishers upon a 
+
+- If user stream fails for some reason, backup to user provided Video, Virtual stream

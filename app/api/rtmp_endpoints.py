@@ -74,15 +74,16 @@ async def on_publish(
             return JSONResponse(status_code=401, content={"message": "Invalid stream key. you do not have permission to join the queue."})
         
         stream_queue = process_manager.stream_queue.get_dj_name_queue_list()
-        if user.dj_name not in stream_queue and stream != process_manager.get_last_streamer_key():
-            process_manager.stream_queue.queue_client_stream(user)
-            logger.debug(f"Added {user.dj_name} ({stream}) to the queue")
-            current_streamer = process_manager.get_current_streamer_key()
-            if not current_streamer:
-                print(f"CURRENT STREAMER: {current_streamer}. Will Forward.")
-                process_manager.start_stream(user)
-                print(f"----> FORWARDING: {user.stream_key}")
-                return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
+        if user.dj_name not in stream_queue:
+            if stream != process_manager.get_last_streamer_key():
+                process_manager.stream_queue.queue_client_stream(user)
+                logger.debug(f"Added {user.dj_name} ({stream}) to the queue")
+                current_streamer = process_manager.get_current_streamer_key()
+                if current_streamer is user.stream_key:
+                    print(f"CURRENT STREAMER: {current_streamer}. Will Forward.")
+                    process_manager.start_stream(user)
+                    print(f"----> FORWARDING: {user.stream_key}")
+                    return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
         print(f"----> NOT FORWARDING: {stream}")
         return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
     elif action == 'on_record_begin':

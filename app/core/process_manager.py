@@ -59,6 +59,7 @@ class StreamManager(metaclass=Singleton):
 
     def update_stream_state(self):
 
+        # remove old state
         self.stream_queue.unqueue_client_stream()
         logger.debug(f"Removed {self.current_stream_key} from the queue")
         drop_stream_publisher(self.current_stream_key)
@@ -68,9 +69,11 @@ class StreamManager(metaclass=Singleton):
 
         self.last_stream_key = self.current_stream_key
 
+        # Get new state ready
         current_streamer = self.stream_queue.current_streamer()
         if current_streamer:
             self.current_stream_key = current_streamer.stream_key
+            self.start_stream(current_streamer.stream_key)
         else:
             self.current_stream_key = None
         
