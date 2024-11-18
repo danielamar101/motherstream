@@ -23,7 +23,7 @@ class Singleton(type):
     
 class StreamManager(metaclass=Singleton):
 
-    last_stream_key = None
+    is_switching = None
     current_stream_key = None
     next_stream_key = None
 
@@ -37,8 +37,6 @@ class StreamManager(metaclass=Singleton):
         self.obs_socket_manager = OBSSocketManager(stream_queue)
 
 
-
-    # Function to start re-streaming a user's stream to motherstream
     def start_stream(self,streamer):
 
         stream_key = streamer.stream_key
@@ -46,7 +44,7 @@ class StreamManager(metaclass=Singleton):
         time_zone = streamer.timezone
         
         self.current_stream_key = stream_key
-        self.last_stream_key = None
+        self.is_switching = False
         self.current_dj_name = dj_name
         self.time_manager = TimeManager()
         
@@ -60,20 +58,21 @@ class StreamManager(metaclass=Singleton):
     def update_stream_state(self):
 
         # remove old state
-        self.stream_queue.unqueue_client_stream()
+        old_streamer = self.stream_queue.unqueue_client_stream()
+
         logger.debug(f"Removed {self.current_stream_key} from the queue")
         drop_stream_publisher(self.current_stream_key)
         logger.debug(f"Stopped streaming {self.current_stream_key}")
 
         send_discord_message(f"{self.current_dj_name} has stopped streaming.")
 
-        self.last_stream_key = self.current_stream_key
-
         # Get new state ready
         current_streamer = self.stream_queue.current_streamer()
+        print(current_streamer)
         if current_streamer:
-            self.current_stream_key = current_streamer.stream_key
-            self.start_stream(current_streamer.stream_key)
+            self.start_stream(current_streamer)
+            # kick the user to re-init the forwarding
+            drop_stream_publisher(self.current_stream_key)
         else:
             self.current_stream_key = None
         
@@ -84,11 +83,12 @@ class StreamManager(metaclass=Singleton):
             self.next_stream_key = None
 
 
-        self.current_dj_name = None
     def get_current_streamer_key(self):
         return self.current_stream_key
-    def get_last_streamer_key(self):
-        return self.last_stream_key
+    def get_is_switching(self):
+        return self.is_switching
+    def toggle_is_switching(self):
+        self.is_switching = not self.is_switching
     def get_next_streamer_key(self):
         return self.next_stream_key
     
@@ -106,7 +106,7 @@ class StreamManager(metaclass=Singleton):
 
                 motherstream_state = self.stream_queue.get_stream_key_queue_list()
                 # print(motherstream_state)
-                print(f'Current Stream: {self.current_stream_key}, Last Stream: {self.last_stream_key}, State: {motherstream_state}')
+                print(f'Current Stream: {self.current_stream_key}, Next Stream: {self.next_stream_key}, State: {motherstream_state} Is_switching: {self.is_switching}')
                 # oryx_state = get_stream_state()
                 
                 # for stream_key in motherstream_state:

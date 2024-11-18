@@ -85,7 +85,7 @@ class StreamQueue(metaclass=Singleton):
         with queue_lock:
             last_user = self.stream_queue.pop(0)
         self._write_persistent_state()
-        return last_user.stream_key
+        return last_user
     
     def remove_client_with_stream_key(self,stream_key):
         try:

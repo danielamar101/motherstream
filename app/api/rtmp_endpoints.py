@@ -53,13 +53,21 @@ async def on_publish(
 
 
     if action == 'on_unpublish':
-        if stream and stream == process_manager.get_current_streamer_key():
-            process_manager.cleanup_stream()
-            
-        # kick the next user, allow OBS to reconnect 
-        # but save the stream key prior
-        print(f"----> NOT FORWARDING: {stream}")
-        return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
+        current_stream_key = process_manager.get_current_streamer_key()
+        if stream and stream == current_stream_key:
+            process_manager.update_stream_state()
+            process_manager.toggle_is_switching()
+            return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
+        elif stream and stream != current_stream_key and process_manager.get_is_switching():
+            process_manager.toggle_is_switching()
+            return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
+        elif stream and stream != current_stream_key:
+            return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
+        # Perhaps add logic to fix erroneous state
+        else:
+            print("Somehow got in an unexpected spot in on_unpublish... investigate...")
+            print(f'-> on_unpublish Current Stream: {current_stream_key}, Next Stream: {process_manager.get_next_streamer_key()}, State: {process_manager.stream_queue.get_stream_key_queue_list()} Is_switching: {process_manager.get_is_switching()}')
+            return JSONResponse(status_code=401, content={"code": 0, "data": do_not_forward_stream})
     elif action == 'on_forward':
         if stream == process_manager.get_current_streamer_key():
             print(f"----> FORWARDING: {stream}")
@@ -72,30 +80,24 @@ async def on_publish(
         user = ensure_valid_user(stream)
         if not user:
             return JSONResponse(status_code=401, content={"message": "Invalid stream key. you do not have permission to join the queue."})
-        
-        stream_queue = process_manager.stream_queue.get_dj_name_queue_list()
-        if user.dj_name not in stream_queue:
-            if stream != process_manager.get_last_streamer_key():
-                process_manager.stream_queue.queue_client_stream(user)
-                logger.debug(f"Added {user.dj_name} ({stream}) to the queue")
-                current_streamer = process_manager.get_current_streamer_key()
-                if current_streamer is user.stream_key:
-                    print(f"CURRENT STREAMER: {current_streamer}. Will Forward.")
-                    process_manager.start_stream(user)
-                    print(f"----> FORWARDING: {user.stream_key}")
-                    return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
-        print(f"----> NOT FORWARDING: {stream}")
-        return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
+        current_stream_key = process_manager.get_current_streamer_key()
+        if not current_stream_key:
+            process_manager.stream_queue.queue_client_stream(user)
+            process_manager.start_stream(user)
+            return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
+        if current_stream_key and current_stream_key == stream:
+            return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
+        if current_stream_key and current_stream_key != stream:
+            process_manager.stream_queue.queue_client_stream(user)
+            return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
+
+        print("Somehow got into an erroneous state in on_publish hook. Investigate...")
+        return JSONResponse(status_code=404, content={"code": 0, "data": do_not_forward_stream})
     elif action == 'on_record_begin':
         pass
     elif action == 'on_record_end':
         pass
     elif action == 'on_ocr':
         pass
-    
-    # logger.info(f"[on_publish] Stream {name} started by client {addr} in app {app}")
-    # if app != 'live':
-    #     # Will allow streaming but not added to queuing mechanism. TODO: Block this for security purposes
-    #     return JSONResponse(status_code=200, content={"message": f"Not handling this app: {app}"})
     
     return JSONResponse(status_code=200, content={"message": "Publishing allowed", "code": 0})
