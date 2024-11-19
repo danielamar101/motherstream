@@ -53,9 +53,14 @@ async def on_publish(
 
 
     if action == 'on_unpublish':
+        if process_manager.get_last_streamer_key() == stream:
+            if process_manager.get_is_blocking_last_streamer():
+                return JSONResponse(status_code=401, content={"code": 0, "data": do_not_forward_stream})
+        else:
+            process_manager.delete_last_streamer_key()
         current_stream_key = process_manager.get_current_streamer_key()
         if stream and stream == current_stream_key:
-            process_manager.update_stream_state()
+            process_manager.cleanup_stream()
             process_manager.toggle_is_switching()
             return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
         elif stream and stream != current_stream_key and process_manager.get_is_switching():
@@ -66,9 +71,14 @@ async def on_publish(
         # Perhaps add logic to fix erroneous state
         else:
             print("Somehow got in an unexpected spot in on_unpublish... investigate...")
-            print(f'-> on_unpublish Current Stream: {current_stream_key}, Next Stream: {process_manager.get_next_streamer_key()}, State: {process_manager.stream_queue.get_stream_key_queue_list()} Is_switching: {process_manager.get_is_switching()}')
+            print(f'-> on_unpublish Current Stream: {current_stream_key}, State: {process_manager.stream_queue.get_stream_key_queue_list()} Is_switching: {process_manager.get_is_switching()}')
             return JSONResponse(status_code=401, content={"code": 0, "data": do_not_forward_stream})
     elif action == 'on_forward':
+        if process_manager.get_last_streamer_key() == stream:
+            if process_manager.get_is_blocking_last_streamer():
+                return JSONResponse(status_code=401, content={"code": 0, "data": do_not_forward_stream})
+        else:
+            process_manager.delete_last_streamer_key()
         if stream == process_manager.get_current_streamer_key():
             print(f"----> FORWARDING: {stream}")
             return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
@@ -80,6 +90,11 @@ async def on_publish(
         user = ensure_valid_user(stream)
         if not user:
             return JSONResponse(status_code=401, content={"message": "Invalid stream key. you do not have permission to join the queue."})
+        if process_manager.get_last_streamer_key() == stream:
+            if process_manager.get_is_blocking_last_streamer():
+                return JSONResponse(status_code=401, content={"code": 0, "data": do_not_forward_stream})
+        else:
+            process_manager.delete_last_streamer_key()
         current_stream_key = process_manager.get_current_streamer_key()
         if not current_stream_key:
             process_manager.stream_queue.queue_client_stream(user)

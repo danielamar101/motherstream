@@ -50,8 +50,7 @@ def register_app(app,process_manager):
     app.include_router(user_router)
     app.include_router(util_router)
 
-    # Reload the queue object in the event of server shutdown during stream
-    process_manager.stream_queue.persist_queue()
+
 
 
 

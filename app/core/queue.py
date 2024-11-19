@@ -25,8 +25,12 @@ class StreamQueue(metaclass=Singleton):
     stream_queue = []
     queue_file_path = Path(os.getcwd()) / 'QUEUE.json'
 
+
     def __init__(self, saved_state=[]):
         self.stream_queue = saved_state
+
+         # Reload the queue object in the event of server shutdown during stream
+        self.persist_queue()
     
     def get_full_user_object(self,user_id):
         db = next(get_db())
@@ -56,11 +60,6 @@ class StreamQueue(metaclass=Singleton):
         else:
             return None
 
-    def next_streamer(self):
-        if self.stream_queue and len(self.stream_queue) > 1:
-            return self.stream_queue[1]
-        else:
-            return None
     
         # save updated queue state to persistent store.
     def _write_persistent_state(self):

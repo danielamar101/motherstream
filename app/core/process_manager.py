@@ -25,7 +25,9 @@ class StreamManager(metaclass=Singleton):
 
     is_switching = None
     current_stream_key = None
-    next_stream_key = None
+
+    last_stream_key = None
+    is_blocking_last_streamer = False
 
     current_dj_name = None
     stream_queue = None
@@ -66,31 +68,39 @@ class StreamManager(metaclass=Singleton):
 
         send_discord_message(f"{self.current_dj_name} has stopped streaming.")
 
+        # last_stream_key = self.last_stream_key()
+        # if last_stream_key and last_stream_key == self.current_stream_key():
+        #     drop_stream_publisher(self.current_stream_key)
+
         # Get new state ready
         current_streamer = self.stream_queue.current_streamer()
-        print(current_streamer)
         if current_streamer:
             self.start_stream(current_streamer)
             # kick the user to re-init the forwarding
             drop_stream_publisher(self.current_stream_key)
         else:
             self.current_stream_key = None
-        
-        next_streamer = self.stream_queue.next_streamer()
-        if next_streamer:
-            self.next_stream_key = next_streamer.stream_key
-        else:
-            self.next_stream_key = None
-
 
     def get_current_streamer_key(self):
         return self.current_stream_key
+    def delete_last_streamer_key(self):
+        self.last_stream_key = None
+    def get_last_streamer_key(self):
+        return self.last_stream_key
+    
     def get_is_switching(self):
         return self.is_switching
     def toggle_is_switching(self):
         self.is_switching = not self.is_switching
-    def get_next_streamer_key(self):
-        return self.next_stream_key
+
+    def get_is_blocking_last_streamer(self):
+        return self.is_blocking_last_streamer
+    def toggle_block_previous_client(self):
+        logger.info(f"Toggle last streamer block. Will block previously kicked client: {self.is_blocking_last_streamer}")
+        self.is_blocking_last_streamer = not self.is_blocking_last_streamer
+
+    def modify_swap_time(self,time, reset_time=False):
+        self.time_manager.modify_swap_interval(interval=time,reset_time=reset_time)
     
     def cleanup_stream(self):
         self.obs_socket_manager.toggle_gstreamer_source(only_off=True)
@@ -101,22 +111,22 @@ class StreamManager(metaclass=Singleton):
 
     # Background thread to manage the stream queue
     def process_queue(self):
+        # for init
+        if self.stream_queue.current_streamer():
+            # update state variables at startup.
+            logger.info("Starting stream from state:")
+            self.start_stream(self.stream_queue.current_streamer()) 
+            logger.info("Done")
         while True:
-            with queue_lock:
 
-                motherstream_state = self.stream_queue.get_stream_key_queue_list()
-                # print(motherstream_state)
-                print(f'Current Stream: {self.current_stream_key}, Next Stream: {self.next_stream_key}, State: {motherstream_state} Is_switching: {self.is_switching}')
-                # oryx_state = get_stream_state()
-                
-                # for stream_key in motherstream_state:
-                #     if stream_key not in oryx_state and (stream_key is not self.current_stream_key or stream_key is not self.stream_queue.next_streamer()):
-                #         print(f"Removing: {stream_key} because they are no longer publishing to oryx")
-                #         drop_stream_publisher(stream_key=stream_key)
-                # Check if the swap interval has passed and end the current stream if it has
-                if self.time_manager and self.time_manager.has_swap_interval_elapsed():
-                    logger.debug(f"Swap interval of {self.time_manager.get_swap_interval()} seconds elapsed, stopping current stream.")
-                    self.cleanup_stream()
+            motherstream_state = self.stream_queue.get_stream_key_queue_list()
+            print(f'Current Stream: {self.current_stream_key}, State: {motherstream_state} Is_switching: {self.is_switching} Is_blocking: {self.is_blocking_last_streamer}')
+            # oryx_state = get_stream_state()
+            
+            if self.time_manager and self.time_manager.has_swap_interval_elapsed():
+                logger.debug(f"Swap interval of {self.time_manager.get_swap_interval()} seconds elapsed, stopping current stream.")
+                self.last_stream_key = self.current_stream_key
+                self.cleanup_stream()
             # Polling sleep time
             time.sleep(3) 
     
