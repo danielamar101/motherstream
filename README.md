@@ -5,6 +5,10 @@ The Motherstream hosts a containeried frontend and backend. The backend is respo
 
 It is designed to assist with automated stream management for livestreams where multiple users can export to one stream, almost entirely uninterrupted.
 
+## Architecture Diagram
+
+![Alt text](./repo/always-12.drawio.jpg "Title")
+
 ## Table of Contents
 
 1. [Introduction](#introduction)
