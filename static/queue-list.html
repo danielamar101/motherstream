@@ -13,8 +13,8 @@
             margin: 0;
             padding: 0;
             display: flex;
-            justify-content: center;
-            align-items: center;
+            /* justify-content: center;
+            align-items: center; */
             height: 100vh;
             /* text-align: center; */
         }
@@ -38,13 +38,13 @@
             margin-top: 10px;
         }
 
-        li {
+        /* li {
             background-color: #1E1E1E;
             margin: 5px 0;
             padding: 10px;
             border-radius: 8px;
             font-size: 1.2rem;
-        }
+        } */
 
         .now-playing {
             font-weight: bold;
@@ -69,7 +69,7 @@
     <script>
         async function fetchQueue() {
             try {
-                const response = await fetch('http://ec2-motherstream:8483/queue-json');
+                const response = await fetch('http://67.254.241.187:8483/queue-json');
                 const json_data = await response.json();
 
                 const data = json_data['stream_queue'];

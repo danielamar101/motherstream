@@ -8,7 +8,7 @@ import logging
 from ..lock_manager import lock as queue_lock
 from .time_manager import TimeManager
 from ..obs import OBSSocketManager
-from .nginx_stream_manager import drop_stream_publisher, record_stream
+from .srs_stream_manager import drop_stream_publisher, get_stream_state
 from app.api.discord import send_discord_message
 
 logger = logging.getLogger(__name__)
@@ -21,163 +21,112 @@ class Singleton(type):
             cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
     
-class ProcessManager(metaclass=Singleton):
+class StreamManager(metaclass=Singleton):
 
-    current_stream_process = None
+    is_switching = None
     current_stream_key = None
+
+    last_stream_key = None
+    is_blocking_last_streamer = False
+
     current_dj_name = None
-    ffmpeg_out_log = None
     stream_queue = None
     obs_socket_manager = None
     time_manager = None
 
-    def __init__(self, stream_queue, ffmpeg_out_log=None):
-        self.ffmpeg_out_log = ffmpeg_out_log
+    def __init__(self, stream_queue):
         self.stream_queue = stream_queue
         self.obs_socket_manager = OBSSocketManager(stream_queue)
 
-    def log_ffmpeg_output(self,pipe, prefix):
-        try:
-            for line in iter(pipe.readline, ''):
-                if not line:
-                    break
-                formatted_output = f"{prefix} {line.rstrip()}\n"
-                self.ffmpeg_out_log.write(formatted_output)
-                self.ffmpeg_out_log.flush()
-        except Exception as e:
-            logger.exception(f"Error reading FFmpeg output: {e}")
-        finally:
-            pipe.close()
 
-    # Function to start re-streaming a user's stream to motherstream
     def start_stream(self,streamer):
-        stream_host = os.environ.get('HOST')
-        rtmp_port = os.environ.get('RTMP_PORT')
 
         stream_key = streamer.stream_key
         dj_name = streamer.dj_name
         time_zone = streamer.timezone
         
-        # TODO: Move this app validation up some levels
-        if not stream_host or not rtmp_port:
-            raise Exception("Error: HOST and RTMP_PORT environment variables must be set.")
-
         self.current_stream_key = stream_key
+        self.is_switching = False
         self.current_dj_name = dj_name
-
-        # build motherstream restream command
-        # https://stackoverflow.com/questions/48610579/use-ffmpeg-to-restream-rtmp-source-to-youtube-no-video-stream-in-output
-        ffmpeg_cmd = [
-            "ffmpeg", "-rw_timeout", "4000000", "-probesize", "100M", "-analyzeduration", "20M", "-re",
-            '-i', f'rtmp://{stream_host}:{rtmp_port}/live/{stream_key}',  "-strict", "-2",
-            "-c:v", "h264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-map", "0:0", # '-crf', '35',
-            "-map", "0:1", "-ar", "44100", "-ab", "128k", "-ac", "2", # "-b:v", "6000k", 
-            "-flags", "+global_header", "-bsf:a", "aac_adtstoasc", "-bufsize", "1000k",  "-preset", "veryfast", 
-            "-f", "flv", f'rtmp://{stream_host}:{rtmp_port}/motherstream/live'
-        ]
-
-        logger.info("Starting ffmpeg subprocess...")
-        self.current_stream_process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.time_manager = TimeManager()
         
-        return_code = self.current_stream_process.poll()
-        if return_code is not None:
-            logger.debug(f"FFmpeg process exited immediately with return code {return_code}")
-            return
-        
-        logger.debug("...done")
-        logger.info(f"Started streaming live/{stream_key} to motherstream/live")
 
         self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
         self.obs_socket_manager.toggle_timer_source(only_off=False)
-        record_stream(stream_key,dj_name,'start')
 
 
         send_discord_message(f"{dj_name} has now started streaming!")
 
+    def update_stream_state(self):
 
-        threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stdout, "[FFmpeg stdout]"), daemon=True).start()
-        threading.Thread(target=self.log_ffmpeg_output, args=(self.current_stream_process.stderr, "[FFmpeg stderr]"), daemon=True).start()
+        # remove old state
+        old_streamer = self.stream_queue.unqueue_client_stream()
 
+        logger.debug(f"Removed {self.current_stream_key} from the queue")
+        drop_stream_publisher(self.current_stream_key)
+        logger.debug(f"Stopped streaming {self.current_stream_key}")
 
-    # Function to stop the current re-streaming process
-    # Returns stopped stream key
-    # It is not the responsibility of this function to manage the queue list. That should be done separate of this function
-    def stop_current_stream(self):
-        if self.current_stream_process:
-            try:
-                logger.info("Terminating ffmpeg process...")
-                self.current_stream_process.terminate()
-                self.current_stream_process.wait(timeout=2)
-                logger.info("...ffmpeg process terminated.")
-            except Exception as e:
-                logger.exception(e)
-                self.current_stream_process.kill()
-                logger.exception("...ffmpeg process killed!")
+        send_discord_message(f"{self.current_dj_name} has stopped streaming.")
 
-            logger.debug(f"Stopped streaming {self.current_stream_key}")
+        # last_stream_key = self.last_stream_key()
+        # if last_stream_key and last_stream_key == self.current_stream_key():
+        #     drop_stream_publisher(self.current_stream_key)
 
-            # Tell nginx to drop the connection
-
-            record_stream(self.current_stream_key,self.current_dj_name,'stop')
-            send_discord_message(f"{self.current_dj_name} has stopped streaming.")
-
+        # Get new state ready
+        current_streamer = self.stream_queue.current_streamer()
+        if current_streamer:
+            self.start_stream(current_streamer)
+            # kick the user to re-init the forwarding
             drop_stream_publisher(self.current_stream_key)
-            # stop recording here
-            to_return = self.current_stream_key
-
-            self.current_stream_process = None
+        else:
             self.current_stream_key = None
-            self.current_dj_name = None
 
-            logger.debug("For safe measure, killing all running ffmpeg processes...")
-            try:
-                subprocess.run(["killall", "ffmpeg"], check=True)
-                logger.debug("Done killing all running ffmpeg processes.")
-            except Exception as e:
-                logger.exception(f"Error trying to kill all ffmpeg processes: {e}")
-            
-            self.ffmpeg_out_log.write("FFMPEG process killed.\n")
-            return to_return
-        
-    def _cleanup_stream(self):
-        self.stop_current_stream()
-        self.stream_queue.unqueue_client_stream()
+    def get_current_streamer_key(self):
+        return self.current_stream_key
+    def delete_last_streamer_key(self):
+        self.last_stream_key = None
+    def get_last_streamer_key(self):
+        return self.last_stream_key
+    
+    def get_is_switching(self):
+        return self.is_switching
+    def toggle_is_switching(self):
+        self.is_switching = not self.is_switching
+
+    def get_is_blocking_last_streamer(self):
+        return self.is_blocking_last_streamer
+    def toggle_block_previous_client(self):
+        logger.info(f"Toggle last streamer block. Will block previously kicked client: {self.is_blocking_last_streamer}")
+        self.is_blocking_last_streamer = not self.is_blocking_last_streamer
+
+    def modify_swap_time(self,time, reset_time=False):
+        self.time_manager.modify_swap_interval(interval=time,reset_time=reset_time)
+    
+    def cleanup_stream(self):
         self.obs_socket_manager.toggle_gstreamer_source(only_off=True)
         self.obs_socket_manager.toggle_timer_source(only_off=True)
         self.obs_socket_manager.toggle_loading_message_source(only_off=True)
         self.time_manager = None
+        self.update_stream_state()
 
     # Background thread to manage the stream queue
     def process_queue(self):
+        # for init
+        if self.stream_queue.current_streamer():
+            # update state variables at startup.
+            logger.info("Starting stream from state:")
+            self.start_stream(self.stream_queue.current_streamer()) 
+            logger.info("Done")
         while True:
-            with queue_lock:
-                # If no current stream and there are streams in the queue
-                current_streamer = self.stream_queue.current_streamer()
-                if not self.current_stream_process: 
-                    if current_streamer:
-                        logger.debug("Starting a stream...")
-                        next_streamer = current_streamer
-                        try:
-                            self.start_stream(next_streamer)
-                            self.time_manager = TimeManager()
 
-                        except Exception as e:
-                            logger.exception(f"Error starting stream: {e}")
-                            self.stream_queue.unqueue_client_stream()  
-                    else:
-                        #TODO: create method of toggling only off once by knowing status of source
-                        self.obs_socket_manager.toggle_gstreamer_source(only_off=True)
-                        self.obs_socket_manager.toggle_timer_source(only_off=True)
-                else:
-                    # Check if the swap interval has passed and end the current stream if it has
-                    if self.time_manager.has_swap_interval_elapsed():
-                        logger.debug(f"Swap interval of {self.time_manager.get_swap_interval()} seconds elapsed, stopping current stream.")
-                        self._cleanup_stream()
-        
-                # If the current stream has ended (ffmpeg process has exited)
-                if self.current_stream_process and self.current_stream_process.poll() is not None:
-                    logger.debug(f"ffmpeg process for {self.current_stream_key} ended")
-                    self._cleanup_stream()
+            motherstream_state = self.stream_queue.get_stream_key_queue_list()
+            print(f'Current Stream: {self.current_stream_key}, State: {motherstream_state} Is_switching: {self.is_switching} Is_blocking: {self.is_blocking_last_streamer}')
+            # oryx_state = get_stream_state()
+            
+            if self.time_manager and self.time_manager.has_swap_interval_elapsed():
+                logger.debug(f"Swap interval of {self.time_manager.get_swap_interval()} seconds elapsed, stopping current stream.")
+                self.last_stream_key = self.current_stream_key
+                self.cleanup_stream()
             # Polling sleep time
             time.sleep(3) 
     
