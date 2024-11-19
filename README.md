@@ -1,8 +1,9 @@
 # Motherstream
 
-The Motherstream is a streaming server with a queuing mechanism for incoming RTMP streams. It handles stream connections, serves as a queue manager for ffmpeg re-streaming, and provides some administrative endpoints for monitoring and control.
+The Motherstream hosts a containeried frontend and backend. The backend is responsible for RTMP hooks that are triggered upon a request to stream to [SRS](https://github.com/ossrs/srs). The frontend allows users to create an account that generates them a stream key. That stream key can then be used to authenticate to the motherstream stream queue. Once a user is in the front of the queue, the user's stream is forwarded to a streaming platform.
+(TODO: Multistream across platforms)
 
-It is intended to be used in conjunction with nginx on a linux machine, and was originally designed to assist with automated stream management for livestreams.
+It is designed to assist with automated stream management for livestreams where multiple users can export to one stream, almost entirely uninterrupted.
 
 ## Table of Contents
 
@@ -13,14 +14,10 @@ It is intended to be used in conjunction with nginx on a linux machine, and was 
 5. [API Endpoints](#api-endpoints)
 6. [Queue Management](#queue-management)
 7. [OBS Integration](#obs-integration)
-8. [Logging](#logging)
-9. [Development](#development)
-10. [Contributing](#contributing)
-11. [License](#license)
 
 ## Introduction
 
-This application handles RTMP streaming with a queue mechanism, managing the re-streaming to a centralized "motherstream". It includes administrative endpoints for managing the queue and monitoring the streams. 
+This application handles RTMP streaming with a queue mechanism that manages the state of SRS/Oryx. It includes administrative endpoints for managing the queue and setting time limits on streamers
 
 The application has the following main features:
 
@@ -86,16 +83,9 @@ These variables can be set in the environment or defined in a `.env` file.
 
 ## API Endpoints
 
-- `POST /on_connect`: Triggered when a client connects to the RTMP server.
-- `POST /on_publish`: Triggered when a client starts a stream.
-- `POST /on_publish_done`: Triggered when a client stops a stream.
-- `POST /on_done`: Triggered when a client disconnects from the RTMP server.
-- `POST /override-queue`: (To be implemented) Manually override the queue.
 - `GET /queue-list`: Returns an HTML page displaying the current queue.
 - `GET /queue-json`: Returns the current queue as a JSON array.
-- `POST /on_play`: Triggered when a client starts playing a stream.
-- `POST /kill_ffmpeg`: Stops the current stream.
-- `POST /clear-queue`: Clears the stream queue.
+
 
 ## Queue Management
 
