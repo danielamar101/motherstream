@@ -27,13 +27,13 @@ class OBSSocketManager():
         self.OBS_HOST = os.environ.get("OBS_HOST")
         self.OBS_PORT = os.environ.get("OBS_PORT")
         self.OBS_PASSWORD = os.environ.get("OBS_PASSWORD")
+        if not True:
+            self.obs_websocket = obsws(self.OBS_HOST, self.OBS_PORT, self.OBS_PASSWORD)
+            logger.debug("Connecting to websocket...")
+            self.__connect()
 
-        self.obs_websocket = obsws(self.OBS_HOST, self.OBS_PORT, self.OBS_PASSWORD)
-        logger.debug("Connecting to websocket...")
-        self.__connect()
-
-        self.start_loading_message_thread()
-        self.toggle_obs_source(source_name="Queue", scene_name="MOTHERSTREAM", toggle_timespan=1)
+            self.start_loading_message_thread()
+            self.toggle_obs_source(source_name="Queue", scene_name="MOTHERSTREAM", toggle_timespan=1)
     
     def __connect(self):
         try:

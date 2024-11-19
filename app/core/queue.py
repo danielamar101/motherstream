@@ -4,8 +4,9 @@ import os
 from pathlib import Path
 import logging
 
+from ..lock_manager import lock as queue_lock
 from ..db.schemas import User
-from ..db.crud import get_user
+from ..db.crud import get_user, get_user_by_stream_key
 from ..db.main import get_db
 
 logger = logging.getLogger(__name__)
@@ -20,15 +21,24 @@ class Singleton(type):
 
 class StreamQueue(metaclass=Singleton):
 
+    last_stream_key = None
     stream_queue = []
     queue_file_path = Path(os.getcwd()) / 'QUEUE.json'
 
+
     def __init__(self, saved_state=[]):
         self.stream_queue = saved_state
+
+         # Reload the queue object in the event of server shutdown during stream
+        self.persist_queue()
     
     def get_full_user_object(self,user_id):
         db = next(get_db())
         return get_user(db,user_id)
+    
+    def get_full_user_object_with_stream_key(self,stream_key):
+        db = next(get_db())
+        return get_user_by_stream_key(db,stream_key)
 
     def get_dj_name_queue_list(self):
         dj_name_list_to_return = []
@@ -37,11 +47,19 @@ class StreamQueue(metaclass=Singleton):
 
         return dj_name_list_to_return
     
+    def get_stream_key_queue_list(self):
+        stream_key_list_to_return = []
+        for user in self.stream_queue:
+            stream_key_list_to_return.append(user.stream_key)
+
+        return stream_key_list_to_return
+    
     def current_streamer(self):
         if self.stream_queue:
             return self.stream_queue[0]
         else:
             return None
+
     
         # save updated queue state to persistent store.
     def _write_persistent_state(self):
@@ -58,13 +76,23 @@ class StreamQueue(metaclass=Singleton):
 
     # store user queue by id
     def queue_client_stream(self,user: User):
-        
-        self.stream_queue.append(user)
+        with queue_lock:
+            self.stream_queue.append(user)
         self._write_persistent_state()
 
     def unqueue_client_stream(self):
-        self.stream_queue.pop(0)
+        with queue_lock:
+            last_user = self.stream_queue.pop(0)
         self._write_persistent_state()
+        return last_user
+    
+    def remove_client_with_stream_key(self,stream_key):
+        try:
+            user = self.get_full_user_object_with_stream_key(stream_key)
+            self.stream_queue.remove(user)
+        except ValueError as e:
+            logger.error("Client isnt in the queue so no removal happened")
+
 
     def clear_queue(self):
         self.stream_queue = []

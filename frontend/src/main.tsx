@@ -8,7 +8,7 @@ import { StrictMode } from "react"
 import { OpenAPI } from "./client"
 import theme from "./theme"
 
-OpenAPI.BASE = "https://motherstream.duckdns.org/backend"
+OpenAPI.BASE = "http://localhost:8483"
 OpenAPI.TOKEN = async () => {
   return localStorage.getItem("access_token") || ""
 }
