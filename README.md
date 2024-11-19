@@ -7,7 +7,7 @@ It is designed to assist with automated stream management for livestreams where 
 
 ## Architecture Diagram
 
-![Alt text](./repo/always-12.drawio.jpg "Title")
+![Alt text](repo/always-12.drawio.jpg "Title")
 
 ## Table of Contents
 
