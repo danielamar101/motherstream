@@ -9,3 +9,6 @@ QUEUE.json
 sql_app.db
 .env
 certs/
+certbot/
+ShazamIO
+.terraform/

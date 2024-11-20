@@ -23,20 +23,19 @@ services:
   #     # Add as many environment variables as needed
   #   restart: unless-stopped
 
-  # nginx-rtmp:
-  #   container_name: nginx
-  #   network_mode: host
-  #   build:
-  #     context: ./nginx-config
-  #     dockerfile: Dockerfile
-  #   volumes: 
-  #     - ./nginx-config/nginx.conf:/etc/nginx/nginx.conf
-  #     - ./nginx-config/rtmp.conf:/etc/nginx/rtmp.conf
-  #     # - ./nginx-config/https-config.conf:/etc/nginx/conf.d/https-config.conf
-  #     # - ./certs/always12:/etc/letsencrypt/live/always12.duckdns.org/
-  #     # - ./certs/always12wiki:/etc/letsencrypt/live/always12wiki.duckdns.org/
-  #     # - ./certs/motherstream:/etc/letsencrypt/live/motherstream.duckdns.org/
-  #     - /var/www:/var/www
+  nginx-rtmp:
+    container_name: nginx
+    network_mode: host
+    build:
+      context: ./nginx-config
+      dockerfile: Dockerfile
+    volumes: 
+      - ./nginx-config/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx-config/rtmp.conf:/etc/nginx/rtmp.conf
+      - ./nginx-config/https-config.conf:/etc/nginx/conf.d/https-config.conf
+      - ./certs/:/etc/letsencrypt/
+      - ./certbot/www/:/var/www/certbot/:ro
+      # - /var/www:/var/www
   oryx:
     container_name: oryx
     network_mode: host
@@ -51,3 +50,8 @@ services:
     volumes:
       - /home/danielamar/Desktop/onyx:/data
     restart: unless-stopped
+  # certbot:
+  #   image: certbot/certbot:latest
+  #   volumes:
+  #     - ./certbot/www/:/var/www/certbot/:rw
+  #     - ./certs/:/etc/letsencrypt/:rw

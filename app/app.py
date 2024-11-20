@@ -14,26 +14,6 @@ def register_app(app,process_manager):
     queue_thread = threading.Thread(target=process_manager.process_queue, daemon=True)
     queue_thread.start()
 
-
-    origins = [
-        "http://192.168.1.100:5173", 
-        "http://localhost:5173",     
-        "http://localhost", 
-        "https://always12.duckdns.org/", 
-        "http://always12.duckdns.org/",
-        "http://raspberry:5173/"    
-    ]
-
-    # Add CORS middleware
-    app.add_middleware(
-        CORSMiddleware,
-        # allow_origins=origins,           # Origins that are allowed to make requests
-        allow_credentials=True,         # Allow cookies and authorization headers
-        allow_methods=["*"],            # Allowed HTTP methods (GET, POST, etc.)
-        allow_headers=["*"],            # Allowed HTTP headers
-        allow_origins=["*"]
-    )
-
     from app.api.rtmp_endpoints import rtmp_blueprint
     from app.api.http_endpoints import http_blueprint
 

@@ -46,10 +46,19 @@ async def lifespan(app: FastAPI):
     logger.info("SERVER SHUTDOWN")
     process_manager.obs_socket_manager.disconnect()
     
-middleware = [
-Middleware(
+origins = [
+    "http://192.168.1.100:5173", 
+    "http://localhost:5173",     
+    "http://localhost", 
+    "https://always12.duckdns.org/", 
+    "http://always12.duckdns.org/",
+    "http://raspberry:5173/",
+    "http://motherstream.xyz",    
+    "https://motherstream.xyz"    
+]
+middleware = [ Middleware(
     CORSMiddleware,
-    allow_origins=['*'],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*']
