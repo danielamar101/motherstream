@@ -37,7 +37,7 @@ services:
       - ./certs/:/etc/letsencrypt/
       - ./certbot/www/:/var/www/certbot/:ro
       - /var/www/streams/stream-recordings:/var/www/streams/stream-recordings
-      - /var/www/stat.xsl:/var/www/stat.xsl
+      - ./nginx-config/stat.xsl:/var/www/stat.xsl
   oryx:
     container_name: oryx
     network_mode: host
