@@ -1,5 +1,4 @@
 export DEBUG_PORT=
-export SSH_USER=
 export HOST=
 export SSH_PORT=
 export RTMP_PORT=
@@ -10,12 +9,12 @@ export OBS_PASSWORD=
 export STAT_PORT=
 export JWT_SECRET=
 
-export SMPT_SERVER=
-export SMTP_PORT=
-export SMTP_USER=
-export SMTP_PASSWORD=
+export SMTP_SERVER= #unused currently
+export SMTP_PORT= #unused currently
+export SMTP_USER= #unused currently
+export SMTP_PASSWORD= #unused currently
 
-export VITE_API_URL=
+export VITE_API_URL= 
 
 export DISCORD_WEBHOOK_URL=
 export TOGGLE_DISCORD_NOTIFICATIONS=

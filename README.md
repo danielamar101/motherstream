@@ -12,6 +12,7 @@ It is designed to assist with automated stream management for livestreams where 
 ## Table of Contents
 
 1. [Introduction](#introduction)
+1. [Frontend](#frontend)
 2. [Requirements](#requirements)
 3. [Installation](#installation)
 4. [Environment Variables](#environment-variables)
@@ -23,31 +24,56 @@ It is designed to assist with automated stream management for livestreams where 
 
 This application handles RTMP streaming with a queue mechanism that manages the state of SRS/Oryx. It includes administrative endpoints for managing the queue and setting time limits on streamers
 
-The application has the following main features:
+The repo has the following main features:
 
+- A frontend to allow streamers to create an account, which generates a unique stream key used for stream authentication 
 - Manage a queue of incoming streams. with rtmp directive hooks.
 - Start and stop the current stream.
 - Persist the queue state to a file.
 - Provide an HTML view of the queue.
 - Integrate with OBS (Open Broadcaster Software) for scene management when a stream ends to perform cleanup events.
-- WIP stream key -> DB lookup
-- 
+
+## Frontend
+
+Check out the [frontend README](frontend/README.md) for information on how to run it locally.
 
 ## Requirements
 
 - Python 3.12+
-- conda for environment management
-- `ffmpeg` and `ffprobe` installed and available in the system PATH.
-- `obsws` for OBS integration.
+- npm (for the frontend)
+- conda for python environment management
 - direnv for environment management (See: .envrc.sample)
+
+
+## Environment Variables
+
+The application requires several environment variables:
+
+- `HOST`: The streaming server host (e.g., `localhost`).
+- `RTMP_PORT`: The RTMP port (e.g., `1935`).
+- `OBS_HOST`: OBS WebSocket server host (e.g., `localhost`).
+- `OBS_PORT`: OBS WebSocket server port (e.g., `4444`).
+- `OBS_PASSWORD`: OBS WebSocket server password (optional).
+- `DEBUG_PORT`: Debugging port for `debugpy` (default: `5555`).
+- `SENTRY_DSN`: Sentry DSN for distributed tracing
+- `STAT_PORT`: port where nginx control/stat modules are listening on
+- `JWT_SECRET`: Secret used for user hashing
+- `VITE_API_URL`: Backend API (motherstream) URL
+- `DB_HOST`: database host
+- `DB_PORT`: database port
+- `DB_PASSWORD`: database password
+- `DB_NAME`: database name
+- `DB_USER`: database user
+
+These variables can be set in the environment with [direnv](https://direnv.net/docs/installation.html). Make your own `.envrc.sample`
 
 ## Installation
 
 1. Clone the repository:
 
 ```sh
-git clone <repository_link>
-cd <repository_directory>
+git clone https://github.com/danielamar101/motherstream
+cd motherstream
 ```
 
 2. Create a virtual environment and activate it:
@@ -72,41 +98,27 @@ pip install -r requirements.txt
 ./start.sh <-- no reloading
 ```
 
-## Environment Variables
-
-The application requires several environment variables:
-
-- `HOST`: The streaming server host (e.g., `localhost`).
-- `RTMP_PORT`: The RTMP port (e.g., `1935`).
-- `OBS_HOST`: OBS WebSocket server host (e.g., `localhost`).
-- `OBS_PORT`: OBS WebSocket server port (e.g., `4444`).
-- `OBS_PASSWORD`: OBS WebSocket server password (optional).
-- `DEBUG_PORT`: Debugging port for `debugpy` (default: `5555`).
-
-These variables can be set in the environment or defined in a `.env` file.
-
-## API Endpoints
+## API Endpoints 
 
 - `GET /queue-list`: Returns an HTML page displaying the current queue.
 - `GET /queue-json`: Returns the current queue as a JSON array.
-- `GET /update-timer/{time_in_seconds}?reset_time=<boolean>` Controls the amount of time left on a stream before kick.
-- `GET /update-block-toggle/`: Controls whether a kicked user is immediately allowed to re-connect to the stream
+- `POST /update-timer/{time_in_seconds}?reset_time=<boolean>` Controls the amount of time left on a stream before kick.
+- `POST /update-block-toggle/`: Controls whether a kicked user is immediately allowed to re-connect to the stream
+- `POST /multi-dj-per-stream`
 
+## SRS HTTP Callback RTMP hooks and dynamic forwarding:
 
+- [HTTP Callback](https://ossrs.io/lts/en-us/docs/v5/doc/getting-started-oryx#http-callback)
+- [Dynamic Forwarding](https://ossrs.io/lts/en-us/docs/v5/doc/forward#dynamic-forward)
 
 ## Queue Management
 
 The stream queue is managed using a list stored in memory and persisted to a file (`QUEUE.json`). The server periodically checks the queue, starts the next stream if no active streams are running, and removes streams from the queue when they finish.
 
-The queue is updated using the `queue_client_stream` and `unqueue_client_stream` functions, ensuring consistency between the in-memory and persisted states.
 
 ## OBS Integration
 
 When a stream ends, the application interacts with OBS via WebSockets to manage scenes, enabling a seamless transition between streams. The connection to OBS is configured using the `OBS_HOST`, `OBS_PORT`, and `OBS_PASSWORD` environment variables.
-
-## Logging
-
-FFmpeg output is logged to `ffmpeg.log`, and the application logs startup and shutdown events to standard output.
 
 ## Development
 

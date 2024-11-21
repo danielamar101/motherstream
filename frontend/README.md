@@ -1,4 +1,4 @@
-# FastAPI Project - Frontend
+# Motherstream - Frontend
 
 The frontend is built with [Vite](https://vitejs.dev/), [React](https://reactjs.org/), [TypeScript](https://www.typescriptlang.org/), [TanStack Query](https://tanstack.com/query), [TanStack Router](https://tanstack.com/router) and [Chakra UI](https://chakra-ui.com/).
 
@@ -70,7 +70,6 @@ If you want, you can also remove the `FRONTEND` environment variables from:
 * `.env`
 * `./scripts/*.sh`
 
-But it would be only to clean them up, leaving them won't really have any effect either way.
 
 ## Generate Client
 
