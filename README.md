@@ -89,6 +89,9 @@ These variables can be set in the environment or defined in a `.env` file.
 
 - `GET /queue-list`: Returns an HTML page displaying the current queue.
 - `GET /queue-json`: Returns the current queue as a JSON array.
+- `GET /update-timer/{time_in_seconds}?reset_time=<boolean>` Controls the amount of time left on a stream before kick.
+- `GET /update-block-toggle/`: Controls whether a kicked user is immediately allowed to re-connect to the stream
+
 
 
 ## Queue Management

@@ -26,6 +26,7 @@ services:
   nginx-rtmp:
     container_name: nginx
     network_mode: host
+    restart: unless-stopped
     build:
       context: ./nginx-config
       dockerfile: Dockerfile
