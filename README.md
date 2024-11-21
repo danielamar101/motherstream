@@ -50,7 +50,7 @@ Check out the [frontend README](frontend/README.md) for information on how to ru
 The application requires several environment variables:
 
 - `HOST`: The streaming server host (e.g., `localhost`).
-- `RTMP_PORT`: The RTMP port (e.g., `1935`).
+- `NGINX_RTMP_PORT`: The RTMP port (e.g., `1935`).
 - `OBS_HOST`: OBS WebSocket server host (e.g., `localhost`).
 - `OBS_PORT`: OBS WebSocket server port (e.g., `4444`).
 - `OBS_PASSWORD`: OBS WebSocket server password (optional).
@@ -58,6 +58,10 @@ The application requires several environment variables:
 - `SENTRY_DSN`: Sentry DSN for distributed tracing
 - `STAT_PORT`: port where nginx control/stat modules are listening on
 - `JWT_SECRET`: Secret used for user hashing
+- `DISCORD_WEBHOOK_URL`: Discord webhook url to announce the start and end of a stream
+- `TOGGLE_DISCORD_NOTIFICATIONS`: flag to enable or disable discord notifications
+- `RECORD_DIR`: Nginx stream record directory
+- 'RECORD_STREAM: Only forward rtmp stream to nginx if truthy value
 - `VITE_API_URL`: Backend API (motherstream) URL
 - `DB_HOST`: database host
 - `DB_PORT`: database port

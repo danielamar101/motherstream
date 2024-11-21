@@ -8,7 +8,7 @@ import logging
 from ..lock_manager import lock as queue_lock
 from .time_manager import TimeManager
 from ..obs import OBSSocketManager
-from .srs_stream_manager import drop_stream_publisher, get_stream_state
+from .srs_stream_manager import drop_stream_publisher, get_stream_state, async_record_stream
 from app.api.discord import send_discord_message
 
 logger = logging.getLogger(__name__)
@@ -56,11 +56,13 @@ class StreamManager(metaclass=Singleton):
 
 
         send_discord_message(f"{dj_name} has now started streaming!")
+        async_record_stream(stream_key=stream_key,dj_name=dj_name,action="start")
 
     def update_stream_state(self):
 
         # remove old state
         old_streamer = self.stream_queue.unqueue_client_stream()
+        async_record_stream(stream_key=old_streamer.stream_key,dj_name=old_streamer.dj_name,action="stop")
 
         logger.debug(f"Removed {self.current_stream_key} from the queue")
         drop_stream_publisher(self.current_stream_key)
@@ -112,15 +114,16 @@ class StreamManager(metaclass=Singleton):
     # Background thread to manage the stream queue
     def process_queue(self):
         # for init
-        if self.stream_queue.current_streamer():
+        current_streamer = self.stream_queue.current_streamer()
+        if current_streamer:
             # update state variables at startup.
-            logger.info("Starting stream from state:")
-            self.start_stream(self.stream_queue.current_streamer()) 
+            logger.info(f"Starting stream from persistent state...: {current_streamer.dj_name}")
+            self.start_stream(current_streamer) 
             logger.info("Done")
         while True:
 
             motherstream_state = self.stream_queue.get_stream_key_queue_list()
-            print(f'Current Stream: {self.current_stream_key}, State: {motherstream_state} Is_switching: {self.is_switching} Is_blocking: {self.is_blocking_last_streamer}')
+            print(f'Current Stream: {self.current_stream_key}, State: {motherstream_state} is_switching: {self.is_switching} is_blocking: {self.is_blocking_last_streamer}')
             # oryx_state = get_stream_state()
             
             if self.time_manager and self.time_manager.has_swap_interval_elapsed():

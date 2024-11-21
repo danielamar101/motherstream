@@ -7,3 +7,5 @@ discord.py
 psycopg2-binary
 obs-websocket-py
 requests
+asyncio
+httpx

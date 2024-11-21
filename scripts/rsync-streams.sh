@@ -1,0 +1,1 @@
+rsync -avz -e "ssh -i ~/.ssh/motherstream_ec2.pem ec2-motherstream:/var/www/streams/stream-recordings/ ~/Documents/Motherstream\ Recordings
