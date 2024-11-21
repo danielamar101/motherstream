@@ -1,7 +1,7 @@
 export DEBUG_PORT=
 export HOST=
 export SSH_PORT=
-export RTMP_PORT=
+export NGINX_RTMP_PORT=
 export SENTRY_DSN=
 export OBS_HOST=
 export OBS_PORT=
@@ -17,7 +17,10 @@ export SMTP_PASSWORD= #unused currently
 export VITE_API_URL= 
 
 export DISCORD_WEBHOOK_URL=
-export TOGGLE_DISCORD_NOTIFICATIONS=
+export TOGGLE_DISCORD_NOTIFICATIONS=1
+export SRS_AUTHORIZATION_BEARER=
+export RECORD_DIR= 
+export RECORD_STREAM=
 
 export LANG=
 export LC_ALL=

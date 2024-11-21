@@ -6,6 +6,7 @@ from ..lock_manager import lock as queue_lock
 from ..db.validation import ensure_valid_user
 
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ async def on_publish(
     }
     print(request_obj)
 
+    record_stream = os.getenv('RECORD_STREAM')
     forward_stream = {
         "urls": [
             f"rtmp://127.0.0.1:1935/motherstream/live{param}"
@@ -47,6 +49,9 @@ async def on_publish(
         "urls": [
         ]
     }
+    if record_stream: 
+        forward_stream["urls"].append(f"rtmp://127.0.0.1:1936/live/{stream}") #nginx record path
+
     if app == 'motherstream':
         print("Motherstream app. Doing nothing.")
         return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
@@ -68,7 +73,7 @@ async def on_publish(
             return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
         elif stream and stream != current_stream_key:
             return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
-        # Perhaps add logic to fix erroneous state
+        # TODO: Perhaps add logic to fix erroneous state
         else:
             print("Somehow got in an unexpected spot in on_unpublish... investigate...")
             print(f'-> on_unpublish Current Stream: {current_stream_key}, State: {process_manager.stream_queue.get_stream_key_queue_list()} Is_switching: {process_manager.get_is_switching()}')
@@ -96,7 +101,7 @@ async def on_publish(
         else:
             process_manager.delete_last_streamer_key()
         current_stream_key = process_manager.get_current_streamer_key()
-        if not current_stream_key:
+        if not current_stream_key: #If there is no one else in stream queue, just start stream immediately
             process_manager.stream_queue.queue_client_stream(user)
             process_manager.start_stream(user)
             return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
