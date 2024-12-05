@@ -1,31 +1,30 @@
 version: '3.8'
 
 services:
-  # motherstream:
-  #   container_name: motherstream
-  #   build:
-  #     context: .  # Use the current directory as build context
-  #     dockerfile: Dockerfile  # Specify the Dockerfile (if it's named differently, change it here)
-  #   network_mode: host  # Use host networking mode
-  #   env_file: .env
-  #     # Add as many environment variables as needed
-  #   # volumes:
-  #   #   - .:/app  # Mount current directory to /app inside container
-  #   restart: unless-stopped
+  motherstream:
+    container_name: motherstream
+    build:
+      context: .  
+      dockerfile: Dockerfile 
+    ports:
+      - 8483:8483
+    env_file: .env
+    # volumes:
+    #   - .:/app 
+    restart: unless-stopped
 
-  # frontend:
-  #   container_name: frontend
-  #   build:
-  #     context: ./frontend  # Use the current directory as build context
-  #     dockerfile: Dockerfile  # Specify the Dockerfile (if it's named differently, change it here)
-  #   network_mode: host  # Use host networking mode
-  #   env_file: frontend/.env
-  #     # Add as many environment variables as needed
-  #   restart: unless-stopped
+  frontend:
+    container_name: frontend
+    build:
+      context: ./frontend  
+      dockerfile: Dockerfile 
+    env_file: frontend/.env
+    restart: unless-stopped
+    ports:
+      - 5174:5174
 
   nginx-rtmp:
     container_name: nginx
-    network_mode: host
     restart: unless-stopped
     build:
       context: ./nginx-config
@@ -38,17 +37,19 @@ services:
       - ./certbot/www/:/var/www/certbot/:ro
       - /var/www/streams/stream-recordings:/var/www/streams/stream-recordings
       - ./nginx-config/stat.xsl:/var/www/stat.xsl
+    ports:
+      - 1936:1936
   oryx:
     container_name: oryx
-    network_mode: host
+    depends_on:
+      - nginx-rtmp
     image: ossrs/oryx:5.15.20
-    # ports:
-    #   - 2022:2022
-    #   - 443:2443
-    #   - 1937:1935
-    #   - 8080:8080
-    #   - 8000:8000/udp
-    #   - 10800:10800/udp
+    ports:
+      - 2022:2022
+      - 1935:1935
+      - 8080:8080
+      - 8000:8000/udp
+      - 10800:10800/udp
     volumes:
       - /home/danielamar/Desktop/onyx:/data
     restart: unless-stopped
@@ -57,3 +58,4 @@ services:
   #   volumes:
   #     - ./certbot/www/:/var/www/certbot/:rw
   #     - ./certs/:/etc/letsencrypt/:rw
+  # TODO: PGSQL container for full containerization
