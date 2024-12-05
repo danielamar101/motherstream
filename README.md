@@ -61,7 +61,7 @@ The application requires several environment variables:
 - `DISCORD_WEBHOOK_URL`: Discord webhook url to announce the start and end of a stream
 - `TOGGLE_DISCORD_NOTIFICATIONS`: flag to enable or disable discord notifications
 - `RECORD_DIR`: Nginx stream record directory
-- 'RECORD_STREAM: Only forward rtmp stream to nginx if truthy value
+- `RECORD_STREAM`: Only forward rtmp stream to nginx if truthy value
 - `VITE_API_URL`: Backend API (motherstream) URL
 - `DB_HOST`: database host
 - `DB_PORT`: database port
@@ -108,7 +108,7 @@ pip install -r requirements.txt
 - `GET /queue-json`: Returns the current queue as a JSON array.
 - `POST /update-timer/{time_in_seconds}?reset_time=<boolean>` Controls the amount of time left on a stream before kick.
 - `POST /update-block-toggle/`: Controls whether a kicked user is immediately allowed to re-connect to the stream
-- `POST /multi-dj-per-stream`
+- `POST /multi-dj-per-stream`: (WIP)
 
 ## SRS HTTP Callback RTMP hooks and dynamic forwarding:
 
