@@ -1,9 +1,10 @@
 # Motherstream
 
-The Motherstream hosts a containeried frontend and backend. The backend is responsible for RTMP hooks that are triggered upon a request to stream to [SRS](https://github.com/ossrs/srs). The frontend allows users to create an account that generates them a stream key. That stream key can then be used to authenticate to the motherstream stream queue. Once a user is in the front of the queue, the user's stream is forwarded to a streaming platform.
-(TODO: Multistream across platforms)
+The Motherstream hosts a frontend and backend. The backend is responsible for RTMP hooks that are triggered upon a request to stream to [SRS](https://github.com/ossrs/srs) as well as many other endpoints to control the stream queue. The frontend allows users to create an account that generates them a stream key. That stream key can then be used to authenticate to the motherstream stream queue. Once a user is in the front of the queue, the user's stream is forwarded to a streaming platform.
 
-It is designed to assist with automated stream management for livestreams where multiple users can export to one stream, almost entirely uninterrupted.
+(WIP: Multistream across platforms)
+
+It is designed to assist with automated stream management for livestreams where multiple users can export to one stream, entirely uninterrupted.
 
 ## Architecture Diagram
 
