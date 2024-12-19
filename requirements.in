@@ -9,3 +9,4 @@ obs-websocket-py
 requests
 asyncio
 httpx
+shazamio
