@@ -27,13 +27,14 @@ class OBSSocketManager():
         self.OBS_HOST = os.environ.get("OBS_HOST")
         self.OBS_PORT = os.environ.get("OBS_PORT")
         self.OBS_PASSWORD = os.environ.get("OBS_PASSWORD")
-        if not True:
-            self.obs_websocket = obsws(self.OBS_HOST, self.OBS_PORT, self.OBS_PASSWORD)
-            logger.debug("Connecting to websocket...")
-            self.__connect()
+        self.obs_websocket = obsws(self.OBS_HOST, self.OBS_PORT, self.OBS_PASSWORD)
+        logger.debug("Connecting to websocket...")
+        self.__connect()
 
-            self.start_loading_message_thread()
-            self.toggle_obs_source(source_name="Queue", scene_name="MOTHERSTREAM", toggle_timespan=1)
+        # TODO: Evaluate if we want this websocket usage
+        # self.start_loading_message_thread()
+
+        self.toggle_obs_source(source_name="Queue", scene_name="MOTHERSTREAM", toggle_timespan=1)
     
     def __connect(self):
         try:
@@ -138,10 +139,9 @@ class OBSSocketManager():
         source_name = 'GMOTHERSTREAM'
         scene_name = 'MOTHERSTREAM'
         try:
-            # logger.info("Sleeping before turning on gmotherstream source")
-            # time.sleep(10)
-            # self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=1, only_off=only_off)
-            pass# skip turning this on for now
+            logger.info("Sleeping before turning on gmotherstream source")
+            time.sleep(3)
+            self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=1, only_off=only_off)
         except Exception as e:
             logger.error(f"Error toggling off {scene_name}:{source_name}. {e}")
     

@@ -7,14 +7,18 @@ from io import BytesIO
 import wave
 import time
 import logging
+import os
+import signal
 
 logger = logging.getLogger(__name__)
-
+# ffmpeg process
+process = None
 # Configuration Constants
 RATE = 44100           # Sample rate
 CHANNELS = 1           # Number of audio channels
 SECONDS = 10           # Duration to buffer before sending to Shazam
-FFMPEG_INPUT = "rtmp://192.168.1.100:1935/live/G1PX9QGZZJ"  # Replace with your RTMP input
+FFMPEG_INPUT = "rtmp://always12.duckdns.org/motherstream/live"  # Replace with your RTMP input
+SONG_DATA = {}
 
 async def recognize_song(shazam, audio_data):
     """
@@ -27,10 +31,11 @@ async def recognize_song(shazam, audio_data):
         # Use the correct method: recognize_song
         out = await shazam.recognize(audio_data)
         logger.info(json.dumps(out, indent=2))
+        return out
     except Exception as e:
         logger.info(f"Error recognizing song: {e}", file=sys.stderr)
 
-def create_ffmpeg_process(input_url):
+async def create_ffmpeg_process(input_url):
     """
     Create and return an FFmpeg subprocess configured to capture audio from the RTMP stream.
 
@@ -47,12 +52,9 @@ def create_ffmpeg_process(input_url):
         'pipe:1'                    # Output to stdout
     ]
 
-    process = subprocess.Popen(
-        ffmpeg_cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,  # Suppress FFmpeg stderr output
-        bufsize=10**8               # Large buffer size to prevent blocking
-    )
+    # create subprocess via asyncio
+    process = await asyncio.create_subprocess_exec(
+        *ffmpeg_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
     return process
 
 def pcm_to_wav(pcm_data):
@@ -71,23 +73,36 @@ def pcm_to_wav(pcm_data):
     wav_buffer.seek(0)
     return wav_buffer.read()
 
-async def stream_audio_to_shazam(process, shazam):
+async def stream_audio_to_shazam(shazam):
+    global SONG_DATA
+    global process
     """
     Stream audio data from FFmpeg process to Shazam for recognition.
 
     :param process: FFmpeg subprocess.
     :param shazam: An instance of Shazam.
     """
-    buffer = BytesIO()
     bytes_per_second = RATE * CHANNELS * 2  # 16-bit audio
     total_bytes = SECONDS * bytes_per_second
+    attempt = 0
 
     try:
         while True:
-            chunk = process.stdout.read(4096)  # Read in small chunks
+            buffer = BytesIO()
+            chunk = None
+            try:
+                chunk = await asyncio.wait_for(process.stdout.read(4096),1) # Read in small chunks, timeout on read if takes too long (non-block)
+            except asyncio.TimeoutError:
+                logger.info("Timeout trying to read any audio data...")
             if not chunk:
-                logger.info("No more data from FFmpeg.")
-                time.sleep(2)
+                if attempt == 5:
+                    logger.info("Havent gotten any data in a while. Killing this process.")
+                    return
+                else:
+                    attempt += 1
+                    continue
+            else:
+                attempt = 0
 
             buffer.write(chunk)
 
@@ -102,31 +117,66 @@ async def stream_audio_to_shazam(process, shazam):
 
                 logger.info("Recognizing song.")
                 # Pass WAV data to Shazamio
-                await recognize_song(shazam, wav_data)
+                SONG_DATA = await recognize_song(shazam, wav_data)
 
                 logger.info("Sleeping.")
-                time.sleep(10)
+                await asyncio.sleep(10)
 
     except asyncio.CancelledError:
         logger.info("Streaming cancelled.", file=sys.stderr)
     finally:
-        logger.info("Killing the shazam probe...")
-        process.terminate()
-        process.wait()
+        if process is not None:
+            logger.info("Killing the shazam probe...")
+            process.terminate()
+            process = None
         logger.info("Done killing the shazam probe.")
 
 async def main():
+    global process
+    global FFMPEG_INPUT
     """
     Main coroutine to set up FFmpeg and start streaming to Shazam.
     """
     shazam = Shazam()
-    process = create_ffmpeg_process(FFMPEG_INPUT)
+    process = await create_ffmpeg_process(FFMPEG_INPUT)
     
     if not process.stdout:
         logger.error("Failed to open FFmpeg stdout.", file=sys.stderr)
         return
 
-    await stream_audio_to_shazam(process, shazam)
+    await stream_audio_to_shazam(shazam)
+
+def recognize_song_full():
+    global process
+    print(process)
+    try:
+        if not process:
+            asyncio.run(main())
+            print("Created task...")
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user.", file=sys.stderr)
+
+def kill_shazamio_process():
+    global process
+    try:
+        if process is not None and process.poll() is None:  # Check if process exists and is still running
+            process.terminate()  # Attempt graceful termination
+            process.wait(timeout=5)  # Wait for the process to terminate
+            print("FFmpeg process terminated gracefully.")
+        else:
+            print("No running FFmpeg process to terminate.")
+    except Exception as e:
+        try:
+            # Forcefully kill the process if terminate fails
+            if process is not None and process.poll() is None:
+                os.kill(process.pid, signal.SIGKILL)
+                print("FFmpeg process killed forcefully.")
+        except Exception as kill_error:
+            print(f"Failed to kill FFmpeg process: {kill_error}")
+        print(f"Error during FFmpeg process termination: {e}")
+    finally:
+        process = None  # Reset the process variable to None
+
 
 if __name__ == "__main__":
     logging_params = {

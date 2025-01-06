@@ -6,8 +6,9 @@ services:
     build:
       context: .  
       dockerfile: Dockerfile 
-    ports:
-      - 8483:8483
+    # ports:
+    #   - 8483:8483
+    network_mode: host
     env_file: .env
     # volumes:
     #   - .:/app 
@@ -15,15 +16,17 @@ services:
 
   frontend:
     container_name: frontend
+    network_mode: host
     build:
       context: ./frontend  
       dockerfile: Dockerfile 
     env_file: frontend/.env
     restart: unless-stopped
-    ports:
-      - 5174:5174
+    # ports:
+    #   - 5173:5173
 
   nginx-rtmp:
+    network_mode: host
     container_name: nginx
     restart: unless-stopped
     build:
@@ -37,19 +40,20 @@ services:
       - ./certbot/www/:/var/www/certbot/:ro
       - /var/www/streams/stream-recordings:/var/www/streams/stream-recordings
       - ./nginx-config/stat.xsl:/var/www/stat.xsl
-    ports:
-      - 1936:1936
+    # ports:
+    #   - 1936:1936
   oryx:
+    network_mode: host
     container_name: oryx
     depends_on:
       - nginx-rtmp
     image: ossrs/oryx:5.15.20
-    ports:
-      - 2022:2022
-      - 1935:1935
-      - 8080:8080
-      - 8000:8000/udp
-      - 10800:10800/udp
+    # ports:
+    #   - 2022:2022
+    #   - 1935:1935
+    #   - 8080:8080
+    #   - 8000:8000/udp
+    #   - 10800:10800/udp
     volumes:
       - /home/danielamar/Desktop/onyx:/data
     restart: unless-stopped

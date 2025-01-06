@@ -69,7 +69,7 @@
     <script>
         async function fetchQueue() {
             try {
-                const response = await fetch('http://67.254.241.187:8483/queue-json');
+                const response = await fetch('https://always12.duckdns.org/queue-json');
                 const json_data = await response.json();
 
                 const data = json_data['stream_queue'];
