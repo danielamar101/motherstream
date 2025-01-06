@@ -151,8 +151,7 @@ def recognize_song_full():
     print(process)
     try:
         if not process:
-            loop = asyncio.get_event_loop()
-            loop.create_task(main())
+            asyncio.run(main())
             print("Created task...")
     except KeyboardInterrupt:
         logger.info("Interrupted by user.", file=sys.stderr)

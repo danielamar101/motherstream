@@ -14,9 +14,10 @@ def register_app(app,process_manager):
     queue_thread = threading.Thread(target=process_manager.process_queue, daemon=True)
     queue_thread.start()
 
-    from app.api.shazam import recognize_song_full
-    logger.info("Starting song recognition thread")
-    recognize_song_full()
+    # from app.api.shazam import main
+    # logger.info("Starting song recognition thread")
+    # shazam_thread = threading.Thread(target=main, daemon=True)
+    # shazam_thread.start()
 
     from app.api.rtmp_endpoints import rtmp_blueprint
     from app.api.http_endpoints import http_blueprint

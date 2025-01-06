@@ -117,6 +117,7 @@ class StreamManager(metaclass=Singleton):
     def process_queue(self):
         # for init
         current_streamer = self.stream_queue.current_streamer()
+        shazam_thread = None
         if current_streamer:
             # update state variables at startup.
             logger.info(f"Starting stream from persistent state...: {current_streamer.dj_name}")
@@ -136,8 +137,17 @@ class StreamManager(metaclass=Singleton):
             time.sleep(3) 
             
             from app.api.shazam import recognize_song_full
-            print("Attempting to restart song recognizing process...")
-            recognize_song_full()
+            if shazam_thread is not None:
+                if not shazam_thread.is_alive():
+                    logger.info("Attempting to restart song recognition thread")
+                    shazam_thread = threading.Thread(target=recognize_song_full, daemon=True)
+                    shazam_thread.start()
+                else:
+                    logger.info("Shazam thread is still kicking!")
+            else:
+                logger.info("Attempting to restart song recognition thread")
+                shazam_thread = threading.Thread(target=recognize_song_full, daemon=True)
+                shazam_thread.start()
     
 
 
