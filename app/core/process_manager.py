@@ -78,6 +78,8 @@ class StreamManager(metaclass=Singleton):
         current_streamer = self.stream_queue.current_streamer()
         if current_streamer:
             self.start_stream(current_streamer)
+            self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
+            self.obs_socket_manager.toggle_timer_source(only_off=False)
             # kick the user to re-init the forwarding
             drop_stream_publisher(self.current_stream_key)
         else:
@@ -132,6 +134,10 @@ class StreamManager(metaclass=Singleton):
                 self.cleanup_stream()
             # Polling sleep time
             time.sleep(3) 
+            
+            from app.api.shazam import recognize_song_full
+            print("Attempting to restart song recognizing process...")
+            recognize_song_full()
     
 
 

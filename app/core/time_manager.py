@@ -4,7 +4,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-swap_interval = 12000
+swap_interval = 3600
 
 class TimeManager():
     
