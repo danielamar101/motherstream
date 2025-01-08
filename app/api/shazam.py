@@ -30,10 +30,10 @@ async def recognize_song(shazam, audio_data):
     try:
         # Use the correct method: recognize_song
         out = await shazam.recognize(audio_data)
-        logger.info(json.dumps(out, indent=2))
+        # logger.info(json.dumps(out, indent=2))
         return out
     except Exception as e:
-        logger.info(f"Error recognizing song: {e}", file=sys.stderr)
+        logger.info(f"Error recognizing song: {e}")
 
 async def create_ffmpeg_process(input_url):
     """
@@ -73,9 +73,7 @@ def pcm_to_wav(pcm_data):
     wav_buffer.seek(0)
     return wav_buffer.read()
 
-async def stream_audio_to_shazam(shazam):
-    global SONG_DATA
-    global process
+async def stream_audio_to_shazam(myself,process,shazam):
     """
     Stream audio data from FFmpeg process to Shazam for recognition.
 
@@ -85,16 +83,16 @@ async def stream_audio_to_shazam(shazam):
     bytes_per_second = RATE * CHANNELS * 2  # 16-bit audio
     total_bytes = SECONDS * bytes_per_second
     attempt = 0
+    buffer = BytesIO()
 
     try:
         while True:
-            buffer = BytesIO()
             chunk = None
             try:
-                chunk = await asyncio.wait_for(process.stdout.read(4096),1) # Read in small chunks, timeout on read if takes too long (non-block)
+                chunk = await asyncio.wait_for(process.stdout.read(4096),5) # Read in small chunks, timeout on read if takes too long (non-block)
             except asyncio.TimeoutError:
                 logger.info("Timeout trying to read any audio data...")
-            if not chunk:
+            if chunk is None:
                 if attempt == 5:
                     logger.info("Havent gotten any data in a while. Killing this process.")
                     return
@@ -117,13 +115,14 @@ async def stream_audio_to_shazam(shazam):
 
                 logger.info("Recognizing song.")
                 # Pass WAV data to Shazamio
-                SONG_DATA = await recognize_song(shazam, wav_data)
+                myself.song_data = extract_song_attributes(await recognize_song(shazam, wav_data))
 
                 logger.info("Sleeping.")
                 await asyncio.sleep(10)
+                buffer = BytesIO()
 
     except asyncio.CancelledError:
-        logger.info("Streaming cancelled.", file=sys.stderr)
+        logger.info("Streaming cancelled.")
     finally:
         if process is not None:
             logger.info("Killing the shazam probe...")
@@ -131,8 +130,7 @@ async def stream_audio_to_shazam(shazam):
             process = None
         logger.info("Done killing the shazam probe.")
 
-async def main():
-    global process
+async def main(myself):
     global FFMPEG_INPUT
     """
     Main coroutine to set up FFmpeg and start streaming to Shazam.
@@ -141,41 +139,18 @@ async def main():
     process = await create_ffmpeg_process(FFMPEG_INPUT)
     
     if not process.stdout:
-        logger.error("Failed to open FFmpeg stdout.", file=sys.stderr)
+        logger.error("Failed to open FFmpeg stdout.")
         return
 
-    await stream_audio_to_shazam(shazam)
+    await stream_audio_to_shazam(myself,process,shazam)
 
-def recognize_song_full():
-    global process
-    print(process)
-    try:
-        if not process:
-            asyncio.run(main())
-            print("Created task...")
-    except KeyboardInterrupt:
-        logger.info("Interrupted by user.", file=sys.stderr)
+class SongRecognizer:
 
-def kill_shazamio_process():
-    global process
-    try:
-        if process is not None and process.poll() is None:  # Check if process exists and is still running
-            process.terminate()  # Attempt graceful termination
-            process.wait(timeout=5)  # Wait for the process to terminate
-            print("FFmpeg process terminated gracefully.")
-        else:
-            print("No running FFmpeg process to terminate.")
-    except Exception as e:
-        try:
-            # Forcefully kill the process if terminate fails
-            if process is not None and process.poll() is None:
-                os.kill(process.pid, signal.SIGKILL)
-                print("FFmpeg process killed forcefully.")
-        except Exception as kill_error:
-            print(f"Failed to kill FFmpeg process: {kill_error}")
-        print(f"Error during FFmpeg process termination: {e}")
-    finally:
-        process = None  # Reset the process variable to None
+    song_data = None
+
+    def recognize_song_full(self):
+        asyncio.run(main(self))
+        logger.info("Created new main task...")
 
 
 if __name__ == "__main__":
@@ -190,4 +165,49 @@ if __name__ == "__main__":
         logger.info("Doing something")
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Interrupted by user.", file=sys.stderr)
+        logger.info("Interrupted by user.")
+
+
+def extract_song_attributes(data):
+    # Initialize the result dictionary
+    result = {
+        'song_name': None,
+        'artist': None,
+        'label': None,
+        'album_cover_link': None,
+        'confidence_level': None
+    }
+
+    # Extract song name
+    result['song_name'] = data.get('track', {}).get('title')
+
+    # Extract artist
+    result['artist'] = data.get('track', {}).get('subtitle')
+
+    # Extract label by searching through sections
+    sections = data.get('track', {}).get('sections', [])
+    for section in sections:
+        if section.get('type') == 'SONG':
+            metadata = section.get('metadata', [])
+            for item in metadata:
+                if item.get('title') == 'Label':
+                    result['label'] = item.get('text')
+                    break
+            if result['label']:
+                break
+
+    # Extract album cover link
+    result['album_cover_link'] = data.get('track', {}).get('images', {}).get('coverart')
+
+    # Compute confidence level based on matches (if available)
+    matches = data.get('matches', [])
+    if matches:
+        # Example computation: inverse of sum of timeskew and frequencyskew
+        # Adjust this formula based on actual confidence metrics
+        timeskew = matches[0].get('timeskew', 0)
+        frequencyskew = matches[0].get('frequencyskew', 0)
+        # Prevent division by zero
+        denominator = 1 + timeskew + frequencyskew
+        result['confidence_level'] = 1 / denominator if denominator != 0 else None
+
+    return result

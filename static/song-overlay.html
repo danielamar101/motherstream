@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- <meta http-equiv="refresh" content="3"> -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Now Playing</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #f1f1f1;
+            font-family: 'Helvetica', sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .now-playing-container {
+            display: flex;
+            align-items: center;
+            background-color: rgba(30, 30, 30, 0.8);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .album-cover {
+            width: 150px;
+            height: 150px;
+            flex-shrink: 0;
+            border-radius: 8px;
+            margin-right: 20px;
+            background-size: cover;
+            background-position: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+        }
+
+        .song-details {
+            flex-grow: 1;
+        }
+
+        .song-details h2 {
+            margin: 0 0 10px 0;
+            font-size: 2rem;
+            color: #FFD700;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+        }
+
+        .song-details p {
+            margin: 5px 0;
+            font-size: 1.2rem;
+            line-height: 1.4;
+        }
+
+        .song-details p span {
+            font-weight: bold;
+            color: #00BFFF;
+        }
+
+        /* Responsive Design for Smaller Screens */
+        @media (max-width: 600px) {
+            .now-playing-container {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+            }
+
+            .album-cover {
+                margin-right: 0;
+                margin-bottom: 15px;
+                width: 120px;
+                height: 120px;
+            }
+
+            .song-details h2 {
+                font-size: 1.5rem;
+            }
+
+            .song-details p {
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Now Playing Section -->
+    <div class="now-playing-container">
+        <div class="album-cover" id="album-cover">
+            <!-- Album cover image will be set as background via JavaScript -->
+        </div>
+        <div class="song-details">
+            <h2 id="song-name">Loading...</h2>
+            <p><span>Artist:</span> <span id="artist">-</span></p>
+            <p><span>Label:</span> <span id="label">-</span></p>
+            <!-- Optional: Confidence Level (Uncomment if needed)
+            <p><span>Confidence:</span> <span id="confidence">-</span></p> 
+            -->
+        </div>
+    </div>
+
+    <script>
+        async function fetchNowPlaying() {
+            try {
+                const response = await fetch('https://always12.duckdns.org/song-json');
+                const json_data = await response.json();
+
+                // Assuming the JSON structure has a 'stream_queue' array with song objects
+                const data = json_data['song_data'];
+                const nowPlaying = document.getElementById('now-playing');
+
+                // Check if there's at least one song in the queue
+                if (data && Object.keys(data).length > 0) {
+
+                    // Update Album Cover
+                    const albumCover = document.getElementById('album-cover');
+                    albumCover.style.backgroundImage = `url('${data.album_cover_link}')`;
+
+                    // Update Song Name
+                    const songName = document.getElementById('song-name');
+                    songName.textContent = data.song_name || 'Unknown Title';
+
+                    // Update Artist
+                    const artist = document.getElementById('artist');
+                    artist.textContent = data.artist || 'Unknown Artist';
+
+                    // Update Label
+                    const label = document.getElementById('label');
+                    label.textContent = data.label || 'Unknown Label';
+
+                } else {
+                    console.log("no bueno")
+                    // If no song is currently playing
+                    document.getElementById('song-name').textContent = 'Nothing is playing currently.';
+                    document.getElementById('artist').textContent = '-';
+                    document.getElementById('label').textContent = '-';
+                    document.getElementById('album-cover').style.backgroundImage = `url('https://via.placeholder.com/150')`;
+                }
+            } catch (error) {
+                console.error('Error fetching Now Playing:', error);
+                // Display error message
+                document.getElementById('song-name').textContent = 'Error loading Now Playing.';
+                document.getElementById('artist').textContent = '-';
+                document.getElementById('label').textContent = '-';
+                document.getElementById('album-cover').style.backgroundImage = `url('https://via.placeholder.com/150')`;
+            }
+        }
+
+        // Initial fetch on load
+        fetchNowPlaying();
+        // Refresh the Now Playing every 5 seconds
+        setInterval(fetchNowPlaying, 5000);
+    </script>
+</body>
+</html>

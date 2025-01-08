@@ -9,6 +9,20 @@ from main import process_manager
 
 http_blueprint = APIRouter()
 
+@http_blueprint.get('/song-json')
+async def queue_json():
+        song_data = process_manager.current_song_data
+
+        return_content = {
+             "song_data": song_data,
+        }
+        return JSONResponse(content=return_content)
+
+
+@http_blueprint.get("/song-details",response_class=HTMLResponse)
+async def queue_list(request: Request):
+    return templates.TemplateResponse("song-overlay.html", {"request":request})
+
 @http_blueprint.get('/queue-json')
 async def queue_json():
         stream_queue = process_manager.stream_queue.get_dj_name_queue_list()

@@ -10,6 +10,7 @@ from .time_manager import TimeManager
 from ..obs import OBSSocketManager
 from .srs_stream_manager import drop_stream_publisher, get_stream_state, async_record_stream
 from app.api.discord import send_discord_message
+from app.api.shazam import SongRecognizer
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +35,17 @@ class StreamManager(metaclass=Singleton):
     obs_socket_manager = None
     time_manager = None
 
+    current_song_data = None
+
     def __init__(self, stream_queue):
         self.stream_queue = stream_queue
         self.obs_socket_manager = OBSSocketManager(stream_queue)
 
+    def set_song_data(self,song_data):
+        self.song_data = song_data
+    
+    def get_song_data(self):
+        return self.song_data
 
     def start_stream(self,streamer):
 
@@ -136,18 +144,17 @@ class StreamManager(metaclass=Singleton):
             # Polling sleep time
             time.sleep(3) 
             
-            from app.api.shazam import recognize_song_full
-            if shazam_thread is not None:
-                if not shazam_thread.is_alive():
-                    logger.info("Attempting to restart song recognition thread")
-                    shazam_thread = threading.Thread(target=recognize_song_full, daemon=True)
-                    shazam_thread.start()
-                else:
-                    logger.info("Shazam thread is still kicking!")
-            else:
+
+            if shazam_thread is None or not shazam_thread.is_alive():
                 logger.info("Attempting to restart song recognition thread")
-                shazam_thread = threading.Thread(target=recognize_song_full, daemon=True)
+                song_recognizer = SongRecognizer()
+                shazam_thread = threading.Thread(target=song_recognizer.recognize_song_full, daemon=True)
                 shazam_thread.start()
+            else:
+                logger.info("Shazam thread is still kicking!")
+                if song_recognizer.song_data != self.current_song_data:
+                    self.current_song_data = song_recognizer.song_data
+                    print(self.current_song_data)
     
 
 

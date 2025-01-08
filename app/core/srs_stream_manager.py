@@ -52,6 +52,7 @@ async def record_stream(stream_key, dj_name, action):
         "app": "live",
         "name": stream_key,
     }
+    response = None
     try:
         # Use an async HTTP library (httpx instead of requests)
         async with httpx.AsyncClient() as client:
