@@ -178,6 +178,9 @@ def extract_song_attributes(data):
         'confidence_level': None
     }
 
+    if not data:
+        return result
+
     # Extract song name
     result['song_name'] = data.get('track', {}).get('title')
 

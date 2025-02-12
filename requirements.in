@@ -9,4 +9,5 @@ obs-websocket-py
 requests
 asyncio
 httpx
-shazamio
+shazamio==0.7.0
+shazamio_core==1.0.7
