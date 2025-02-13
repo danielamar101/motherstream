@@ -72,7 +72,17 @@ async def update_timer(time: int, reset_time: bool = False):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@http_blueprint.post("/update-block-toggle/")
+@http_blueprint.get("/time-settings")
+async def update_timer():
+    try:
+        swap_interval = process_manager.time_manager.get_swap_interval()
+        remaining_time = process_manager.time_manager.get_remaining_time()
+        return JSONResponse(content={"swap_interval": swap_interval,"remaining_time": remaining_time})
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@http_blueprint.post("/block-toggle")
 async def update_timer():
 
     try:
@@ -80,5 +90,16 @@ async def update_timer():
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@http_blueprint.get("/block-toggle")
+async def update_timer():
+
+    try:
+        is_blocked = process_manager.get_is_blocking_last_streamer()
+        return JSONResponse(content={"is_blocked": is_blocked})
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
     

@@ -11,8 +11,8 @@ const loadDevtools = () =>
     return {
       default: () => (
         <>
-          <routerDevtools.TanStackRouterDevtools />
-          <reactQueryDevtools.ReactQueryDevtools />
+          {/* <routerDevtools.TanStackRouterDevtools /> */}
+          {/* <reactQueryDevtools.ReactQueryDevtools /> */}
         </>
       ),
     }

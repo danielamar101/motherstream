@@ -1,18 +1,34 @@
-# Use an official Python runtime as a parent image
-FROM python:3.12
+# Stage 1: Build dependencies
+FROM python:3.12 AS builder
 
-RUN apt-get update && apt-get install -y ffmpeg
+# Install dependencies
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip uninstall -y asyncio || true && \
+    pip install --no-cache-dir -r requirements.txt --target /app/dependencies
 
-# Set the working directory inside the container
+# Stage 2: Final image
+FROM python:3.12-slim
+
+# Install only necessary system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
+# Copy dependencies from the builder stage
+COPY --from=builder /app/dependencies /app/dependencies
+
+# Ensure Uvicorn is installed globally
+RUN pip install --no-cache-dir uvicorn
+
+# Copy the application code
 COPY . /app
 
-# Install dependencies from requirements.txt (assuming you have one)
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
+# Update Python path for installed dependencies
+ENV PYTHONPATH="/usr/local/lib/python3.12:/app/dependencies:$PYTHONPATH"
 
 # Command to run the FastAPI app with Uvicorn
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8483"]
