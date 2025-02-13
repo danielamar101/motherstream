@@ -108,7 +108,9 @@ pip install -r requirements.txt
 - `GET /queue-list`: Returns an HTML page displaying the current queue.
 - `GET /queue-json`: Returns the current queue as a JSON array.
 - `POST /update-timer/{time_in_seconds}?reset_time=<boolean>` Controls the amount of time left on a stream before kick.
-- `POST /update-block-toggle/`: Controls whether a kicked user is immediately allowed to re-connect to the stream
+- `GET /time-settings`: Returns a json object showing swap interval and remaining time in a stream
+- `POST /block-toggle/`: Controls whether a kicked user is immediately allowed to re-connect to the stream
+- `GET /block-toggle`: Returns false if a kicked user is immediately allowed to re-connect to the stream
 - `POST /multi-dj-per-stream`: (WIP)
 
 ## SRS HTTP Callback RTMP hooks and dynamic forwarding:
