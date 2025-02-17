@@ -19,3 +19,5 @@
 - Fix up info page
 - Invite only to create an account, link to discord
 - Sexier UI
+- Decouple rtmp and http endpoints
+- Longer time period for shazmaing tracks

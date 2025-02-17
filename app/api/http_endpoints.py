@@ -2,6 +2,8 @@ from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.templating import Jinja2Templates
 
+from app.core.time_manager import TimeManager
+
 templates = Jinja2Templates(directory="static")
 
 from main import process_manager
@@ -73,17 +75,21 @@ async def update_timer(time: int, reset_time: bool = False):
         raise HTTPException(status_code=500, detail=str(e))
 
 @http_blueprint.get("/time-settings")
-async def update_timer():
+async def timer_get():
     try:
-        swap_interval = process_manager.time_manager.get_swap_interval()
-        remaining_time = process_manager.time_manager.get_remaining_time()
+        if process_manager.time_manager: 
+            swap_interval = process_manager.time_manager.get_swap_interval()
+            remaining_time = process_manager.time_manager.get_remaining_time()
+        else:
+            swap_interval = TimeManager().get_swap_interval()
+            remaining_time = 0
         return JSONResponse(content={"swap_interval": swap_interval,"remaining_time": remaining_time})
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
 @http_blueprint.post("/block-toggle")
-async def update_timer():
+async def update_toggle():
 
     try:
         process_manager.toggle_block_previous_client()
@@ -92,7 +98,7 @@ async def update_timer():
         raise HTTPException(status_code=500, detail=str(e))
 
 @http_blueprint.get("/block-toggle")
-async def update_timer():
+async def get_toggle():
 
     try:
         is_blocked = process_manager.get_is_blocking_last_streamer()

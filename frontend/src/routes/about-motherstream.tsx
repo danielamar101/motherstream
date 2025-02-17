@@ -19,17 +19,19 @@ function AboutMotherstream() {
         <Text fontSize="3xl" fontWeight="bold" color="#911c11">
           About Motherstream
         </Text>
-        <Text fontSize="md" color="gray.700">
-          Welcome to Motherstream, a platform dedicated to bringing high-quality streaming experiences to users worldwide.
+        <Text fontSize="lg">
+          Welcome to the Motherstream. 
         </Text>
-        <Image
-          src="/assets/images/motherstream-example.jpg"
-          alt="Motherstream Example"
-          maxW="full"
-          borderRadius="md"
-        />
-        <Text fontSize="md" color="gray.700">
-          Our mission is to provide seamless, reliable, and innovative streaming solutions, empowering creators and audiences alike.
+        <Text>
+        {"\n"}
+          The motherstream enables the always 12 collective to have a distributed group of DJ's that can be located in any part of the world, 
+          queue up to broadcast their stream to the always 12 fan base. It enables a seamless transition between two DJ's in different locations with two entirely different setups.
+          Something that was previously not possible with current stream platforms. In essence then the motherstream can be described as a platform that sits on top of a streaming platform, 
+          extending the functionality in whatever which way we want. 
+          {"\n"}
+        </Text>
+        <Text>
+          Want to play a set? Make an account and join our discord!
         </Text>
       </VStack>
     </Container>

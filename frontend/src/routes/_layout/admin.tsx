@@ -11,10 +11,15 @@ import {
   Th,
   Thead,
   Tr,
+  Checkbox,
+  Select,
+  Button,
+  FormControl,
+  FormLabel,
 } from "@chakra-ui/react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { z } from "zod"
 
 import { type UserPublic, UsersService } from "../../client"
@@ -36,9 +41,9 @@ const PER_PAGE = 5
 
 function getUsersQueryOptions({ page }: { page: number }) {
   return {
+    queryKey: ["users", { page }],
     queryFn: () =>
       UsersService.readUsers({ skip: (page - 1) * PER_PAGE, limit: PER_PAGE }),
-    queryKey: ["users", { page }],
   }
 }
 
@@ -133,6 +138,164 @@ function UsersTable() {
   )
 }
 
+function StreamSettingsPanel() {
+  const queryClient = useQueryClient()
+  const [selectedTime, setSelectedTime] = useState("5")
+  const [resetTime, setResetTime] = useState(false)
+
+  // GET /time-settings
+  const {
+    data: timeSettingsData,
+    isLoading: isLoadingTimeSettings,
+    error: timeSettingsError,
+  } = useQuery({
+    queryKey: ["time-settings"],
+    queryFn: async () => {
+      const res = await fetch("/time-settings")
+      if (!res.ok) throw new Error("Failed to fetch time settings")
+      return res.json()
+    },
+  })
+
+  // GET /block-toggle
+  const {
+    data: blockToggleData,
+    isLoading: isLoadingBlockToggle,
+    error: blockToggleError,
+  } = useQuery({
+    queryKey: ["block-toggle"],
+    queryFn: async () => {
+      const res = await fetch("/block-toggle")
+      if (!res.ok) throw new Error("Failed to fetch block toggle")
+      return res.json()
+    },
+  })
+
+  // POST /block-toggle mutation (toggles blocking)
+  const toggleBlockMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/block-toggle", {
+        method: "POST",
+      })
+      if (!res.ok) throw new Error("Failed to toggle block")
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["block-toggle"] })
+    },
+  })
+
+  // POST /update-timer/{time}?reset_time=<true|false> mutation
+  const updateTimerMutation = useMutation({
+    mutationFn: async ({ time, resetTime }: { time: string; resetTime: boolean }) => {
+      const res = await fetch(`/update-timer/${time}?reset_time=${resetTime}`, {
+        method: "POST",
+      })
+      if (!res.ok) throw new Error("Failed to update timer")
+      return res.json()
+    },
+  })
+
+  return (
+    <Box border="1px" borderColor="gray.200" borderRadius="md" p={4} mt={8}>
+      <Heading size="md" mb={4}>
+        Stream Settings
+      </Heading>
+
+      {/* Time Settings */}
+      <Box mb={4}>
+        <Heading size="sm" mb={2}>
+          Time Settings
+        </Heading>
+        {isLoadingTimeSettings ? (
+          <SkeletonText noOfLines={2} />
+        ) : timeSettingsError ? (
+          <Box color="red.500">Error loading time settings</Box>
+        ) : (
+          <Box>
+            <Box>Swap Interval: {timeSettingsData.swap_interval}</Box>
+            <Box>Remaining Time: {timeSettingsData.remaining_time}</Box>
+          </Box>
+        )}
+      </Box>
+
+      {/* Block Toggle */}
+      <Box mb={4}>
+        <Heading size="sm" mb={2}>
+          Block Toggle
+        </Heading>
+        {isLoadingBlockToggle ? (
+          <SkeletonText noOfLines={1} />
+        ) : blockToggleError ? (
+          <Box color="red.500">Error loading block toggle</Box>
+        ) : (
+          <Checkbox
+            isChecked={blockToggleData?.is_blocked}
+            onChange={() => toggleBlockMutation.mutate()}
+          >
+            {blockToggleData?.is_blocked ? "Blocked" : "Not Blocked"}
+          </Checkbox>
+        )}
+      </Box>
+
+      {/* Update Timer */}
+      <Box border="1px" borderColor="gray.100" p={4} borderRadius="md">
+        <Heading size="sm" mb={2}>
+          Update Timer
+        </Heading>
+        <Flex align="center" gap={4}>
+          <FormControl>
+            <FormLabel htmlFor="timer-select" mb={1}>
+              Timer (minutes)
+            </FormLabel>
+            <Select
+              id="timer-select"
+              value={selectedTime}
+              onChange={(e) => setSelectedTime(e.target.value)}
+              width="100px"
+            >
+              <option value="1">1</option>
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="15">15</option>
+              <option value="30">30</option>
+              <option value="60">60</option>
+            </Select>
+          </FormControl>
+          <FormControl display="flex" alignItems="center">
+            <FormLabel htmlFor="reset-toggle" mb="0">
+              Reset Time?
+            </FormLabel>
+            <Checkbox
+              id="reset-toggle"
+              isChecked={resetTime}
+              onChange={(e) => setResetTime(e.target.checked)}
+            />
+          </FormControl>
+          <Button
+            onClick={() =>
+              updateTimerMutation.mutate({ time: selectedTime, resetTime })
+            }
+            isLoading={updateTimerMutation.isLoading}
+          >
+            Update Timer
+          </Button>
+        </Flex>
+        {updateTimerMutation.isError && (
+          <Box color="red.500" mt={2}>
+            Error updating timer
+          </Box>
+        )}
+        {updateTimerMutation.isSuccess && (
+          <Box color="green.500" mt={2}>
+            Timer updated successfully!
+          </Box>
+        )}
+      </Box>
+    </Box>
+  )
+}
+
 function Admin() {
   return (
     <Container maxW="full">
@@ -142,6 +305,9 @@ function Admin() {
 
       <Navbar type={"User"} addModalAs={AddUser} />
       <UsersTable />
+      <StreamSettingsPanel />
     </Container>
   )
 }
+
+export default Admin
