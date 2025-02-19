@@ -21,3 +21,5 @@
 - Sexier UI
 - Decouple rtmp and http endpoints
 - Longer time period for shazmaing tracks
+- Fix algo
+- selectively record streams
