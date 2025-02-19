@@ -143,6 +143,8 @@ function StreamSettingsPanel() {
   const [selectedTime, setSelectedTime] = useState("5")
   const [resetTime, setResetTime] = useState(false)
 
+  const API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:5000/api"
+
   // GET /time-settings
   const {
     data: timeSettingsData,
@@ -151,7 +153,7 @@ function StreamSettingsPanel() {
   } = useQuery({
     queryKey: ["time-settings"],
     queryFn: async () => {
-      const res = await fetch("/time-settings")
+      const res = await fetch(`${API_BASE_URL}/time-settings`)
       if (!res.ok) throw new Error("Failed to fetch time settings")
       return res.json()
     },
@@ -165,7 +167,7 @@ function StreamSettingsPanel() {
   } = useQuery({
     queryKey: ["block-toggle"],
     queryFn: async () => {
-      const res = await fetch("/block-toggle")
+      const res = await fetch(`${API_BASE_URL}/block-toggle`)
       if (!res.ok) throw new Error("Failed to fetch block toggle")
       return res.json()
     },
@@ -174,7 +176,7 @@ function StreamSettingsPanel() {
   // POST /block-toggle mutation (toggles blocking)
   const toggleBlockMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/block-toggle", {
+      const res = await fetch(`${API_BASE_URL}/block-toggle`, {
         method: "POST",
       })
       if (!res.ok) throw new Error("Failed to toggle block")
@@ -188,7 +190,7 @@ function StreamSettingsPanel() {
   // POST /update-timer/{time}?reset_time=<true|false> mutation
   const updateTimerMutation = useMutation({
     mutationFn: async ({ time, resetTime }: { time: string; resetTime: boolean }) => {
-      const res = await fetch(`/update-timer/${time}?reset_time=${resetTime}`, {
+      const res = await fetch(`${API_BASE_URL}/update-timer/${time}?reset_time=${resetTime}`, {
         method: "POST",
       })
       if (!res.ok) throw new Error("Failed to update timer")
