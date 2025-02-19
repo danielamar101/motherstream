@@ -17,8 +17,12 @@ function Dashboard() {
           <Text fontSize="2xl">
             Hi, {currentUser?.dj_name || currentUser?.email} 👋🏼
           </Text>
-          <Text>Welcome back, nice to see you again!</Text>
         </Box>
+        <Box pt={12} m={2}>
+          <Text fontSize="2xl">Welcome back. Your stream key is: {currentUser?.stream_key}</Text> 
+          <Text>What do i do with this? (insert link later)</Text>
+        </Box>
+
       </Container>
     </>
   )

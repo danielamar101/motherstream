@@ -9,6 +9,10 @@ class UserBase(BaseModel):
     password: str
     dj_name: str
     timezone: str
+    
+    is_active: bool
+    is_superuser: bool
+    is_superduper_user: bool
 
     class Config:
         orm_model = True

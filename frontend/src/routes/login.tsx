@@ -1,4 +1,5 @@
 import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons"
+import DiscordButton from '../components/Items/discord';
 import {
   Button,
   Container,
@@ -76,6 +77,18 @@ function Login() {
         gap={4}
         centerContent
       >
+        <Text>
+          What is the {" "}
+          <Link 
+            as={RouterLink} 
+            to="/about-motherstream" 
+            color="blue.500"
+            textAlign="center"
+            >
+            Motherstream
+        </Link>
+          ?
+        </Text>
         <Image
           src="/assets/images/logo.png"
           alt="motherstream logo"
@@ -85,14 +98,14 @@ function Login() {
           mb={4}
         />
         <Text
-        fontSize="2xl"
-        fontWeight="bold"
-        textAlign="center"
-        mb={6}
-        color="#911c11"
+          fontSize="2xl"
+          fontWeight="bold"
+          textAlign="center"
+          mb={6}
+          color="#911c11"
         >
-        Motherstream
-      </Text>
+          Motherstream
+        </Text>
         <FormControl id="username" isInvalid={!!errors.username || !!error}>
           <Input
             id="username"
@@ -147,6 +160,8 @@ function Login() {
             Sign up
           </Link>
         </Text>
+
+        <DiscordButton inviteCode="6DquCakK" />
       </Container>
     </>
   )

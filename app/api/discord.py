@@ -18,7 +18,7 @@ def send_discord_message(message):
     try:
         WEBHOOK_URL=os.environ.get("DISCORD_WEBHOOK_URL")
         DISCORD_NOTIF_TOGGLE=os.environ.get("TOGGLE_DISCORD_NOTIFICATIONS")
-        if DISCORD_NOTIF_TOGGLE:
+        if DISCORD_NOTIF_TOGGLE != "false":
             data = {
                 "content": message
             }

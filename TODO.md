@@ -13,3 +13,13 @@
 - If user stream fails for some reason, backup to user provided Video, Virtual stream
 
 - Refresh OBS browser source automatically: https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md#pressinputpropertiesbutton
+
+- Restart server and start stream in OBS automatically
+- Create admin portal
+- Fix up info page
+- Invite only to create an account, link to discord
+- Sexier UI
+- Decouple rtmp and http endpoints
+- Longer time period for shazmaing tracks
+- Fix algo
+- selectively record streams

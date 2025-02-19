@@ -20,5 +20,7 @@ class User(Base):
     password = Column(String)
     
     is_active = Column(Boolean, default=True)
+    is_superuser = Column(Boolean, default=False)
+    is_superduper_user = Column(Boolean, default=False)
 
 
