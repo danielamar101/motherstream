@@ -53,7 +53,7 @@ class StreamManager(metaclass=Singleton):
         dj_name = streamer.dj_name
         time_zone = streamer.timezone
         
-        self.current_stream_key = stream_key
+        self.current_stream_key = self.stream_queue.lead_streamer()
         self.is_switching = False
         self.current_dj_name = dj_name
         self.time_manager = TimeManager()
@@ -70,17 +70,16 @@ class StreamManager(metaclass=Singleton):
 
         # remove old state
         old_streamer = self.stream_queue.unqueue_client_stream()
+        # stop recording
         async_record_stream(stream_key=old_streamer.stream_key,dj_name=old_streamer.dj_name,action="stop")
 
-        logger.debug(f"Removed {self.current_stream_key} from the queue")
-        drop_stream_publisher(self.current_stream_key)
-        logger.debug(f"Stopped streaming {self.current_stream_key}")
+        logger.debug(f"Removed {old_streamer.stream_key} from the queue")
+        drop_stream_publisher(old_streamer.stream_key)
+        logger.debug(f"Stopped streaming {old_streamer.stream_key}")
 
-        send_discord_message(f"{self.current_dj_name} has stopped streaming.")
+        send_discord_message(f"{old_streamer.dj_name} has stopped streaming.")
 
-        # last_stream_key = self.last_stream_key()
-        # if last_stream_key and last_stream_key == self.current_stream_key():
-        #     drop_stream_publisher(self.current_stream_key)
+        self.set_last_stream_key(old_streamer.stream_key)
 
         # Get new state ready
         current_streamer = self.stream_queue.current_streamer()
@@ -88,15 +87,19 @@ class StreamManager(metaclass=Singleton):
             self.start_stream(current_streamer)
             self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
             self.obs_socket_manager.toggle_timer_source(only_off=False)
+
             # kick the user to re-init the forwarding
-            drop_stream_publisher(self.current_stream_key)
+            drop_stream_publisher(current_streamer.stream_key)
         else:
             self.current_stream_key = None
 
     def get_current_streamer_key(self):
         return self.current_stream_key
+    
     def delete_last_streamer_key(self):
         self.last_stream_key = None
+    def set_last_stream_key(self,key):
+        self.last_stream_key = key
     def get_last_streamer_key(self):
         return self.last_stream_key
     
@@ -108,8 +111,8 @@ class StreamManager(metaclass=Singleton):
     def get_is_blocking_last_streamer(self):
         return self.is_blocking_last_streamer
     def toggle_block_previous_client(self):
-        logger.info(f"Toggle last streamer block. Will block previously kicked client: {self.is_blocking_last_streamer}")
         self.is_blocking_last_streamer = not self.is_blocking_last_streamer
+        logger.info(f"Toggle last streamer block. Will block previously kicked client: {self.is_blocking_last_streamer}")
 
     def modify_swap_time(self,time, reset_time=False):
         self.time_manager.modify_swap_interval(interval=time,reset_time=reset_time)
@@ -134,7 +137,7 @@ class StreamManager(metaclass=Singleton):
         while True:
 
             motherstream_state = self.stream_queue.get_stream_key_queue_list()
-            print(f'Current Stream: {self.current_stream_key}, State: {motherstream_state} is_switching: {self.is_switching} is_blocking: {self.is_blocking_last_streamer}')
+            print(f'Lead Stream: {self.current_stream_key}, Last Stream: {self.get_last_streamer_key()} State: {motherstream_state} CHANGEOVER: {self.is_switching} BLOCKING: {self.is_blocking_last_streamer}')
             # oryx_state = get_stream_state()
             
             if self.time_manager and self.time_manager.has_swap_interval_elapsed():
