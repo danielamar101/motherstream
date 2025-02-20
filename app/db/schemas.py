@@ -9,10 +9,7 @@ class UserBase(BaseModel):
     password: str
     dj_name: str
     timezone: str
-    
-    is_active: bool
-    is_superuser: bool
-    is_superduper_user: bool
+
 
     class Config:
         orm_model = True
@@ -24,6 +21,9 @@ class OAuth2Login(BaseModel):
 # For creating users
 class UserCreate(UserBase):
     stream_key: str
+        
+    is_active: bool
+    is_superuser: bool
     pass
 #For interacting with already created users
 class User(UserCreate):

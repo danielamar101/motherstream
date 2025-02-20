@@ -104,8 +104,9 @@ def drop_stream_publisher(stream_key):
             logger.info("Failure dropping publisher.")
     except Exception as e:
         logger.error(f"Exception dropping publisher: {e}")
-
     return response
+#nada
+
 
 def get_stream_state():
 

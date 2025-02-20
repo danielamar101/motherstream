@@ -60,7 +60,12 @@ class StreamQueue(metaclass=Singleton):
         else:
             return None
 
-    
+    def lead_streamer(self):
+        if self.stream_queue:
+            return self.stream_queue[0].stream_key
+        else:
+            return None
+
         # save updated queue state to persistent store.
     def _write_persistent_state(self):
         try:
