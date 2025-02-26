@@ -20,7 +20,7 @@ Case 3:
 Case 4 (User 1) redoes flow due to starting kick. They were the current streamer. State was [User 1, User 2]:
     - Unpublish flow
         - Do not change state
-        - disable CHANGEOVER behavior
+        - disable PRIORITY behavior
     
     - then publish flow
         - User 1 is in the queue (front)
@@ -31,7 +31,7 @@ Case 5 (User 2) redoes flow due to timeout kick. They were the current streamer.
     -  Unpublish flow.
         - dequeue User 2
         - Remember User 2 was our last streamer (for block toggle ability)
-        - enable CHANGEOVER behavior
+        - enable PRIORITY behavior
 
     -OBS triggers publish flow
         - User 2 is not our current streamer
@@ -43,7 +43,7 @@ Case 6 (User 2) unpublishes flow due to manually leaving. They were the current 
     -  Unpublish flow.
         - dequeue User 2
         - Remember User 2 was our last streamer (for block toggle ability)
-        - enable CHANGEOVER behavior
+        - enable PRIORITY behavior
     - User 3 Performs case 4
 
 Case 7 (User 1) joins the queue. They are not the current streamer. State is [User 2, User 3]:
@@ -52,19 +52,21 @@ Case 7 (User 1) joins the queue. They are not the current streamer. State is [Us
         - Do Not Forward
         - State: [User 2, User 3, User 1]
 
-CHANGEOVER is how we will track whether the unpublish event is due to a start kick or not
-LAST_STREAMER is how we will treak the previous streamer
+PRIORITY is how we will track the kicked user 
+LAST_STREAMER is how we will track the previous streamer
 BLOCKING is how we will track whether or not we will allow the previous streamer to reconnect and restream
 
+Note: Last streamer and priority streamer should always be distinct!
+
 Unpublish:
-  if CHANGEOVER:
-    -> Unpublish has already executed by Case 6 or 7. This means current Unpublish is due to starting kick.
+  if PRIORITY:
+    -> Unpublish has already executed by Case 5 or 6. This means current Unpublish is due to starting kick (case 4).
     - Do not change state
-    - Disable CHANGEOVER
+    - Disable PRIORITY
   else:
-    -> Unpublish is being executed by Case 6 or 7
+    -> Unpublish is being executed by Case 5 or 6
     if the caller is the lead streamer:
-      - enable CHANGEOVER
+      - enable PRIORITY
       - LAST_STREAMER is caller
     - remove the caller (remove_client_with_stream_key)
   
@@ -74,7 +76,7 @@ Publish:
       if BLOCKING and last streamer is caller:
         - Do Not Forward
       else:
-        - forget LAST_STREAMER <-- TODO: Need to be done in ONE MORE SPOT
+        - forget LAST_STREAMER 
         - queue up caller
         - Start stream
         - Forward

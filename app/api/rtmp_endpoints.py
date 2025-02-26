@@ -58,22 +58,19 @@ async def on_publish(
 
 
     if action == 'on_unpublish':
-        CHANGEOVER = process_manager.get_is_switching()
+        PRIORITY = process_manager.get_priority_key()
         lead_stream_key = process_manager.stream_queue.lead_streamer()
 
-        if CHANGEOVER:
-            print("-----> Changeover toggled")
-            process_manager.toggle_is_switching()
+        if PRIORITY and PRIORITY == stream:
+            process_manager.set_priority_key(None)
             return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
         else:
             if stream and stream == lead_stream_key:
-                process_manager.toggle_is_switching()
-                process_manager.set_last_stream_key(lead_stream_key)
-                process_manager.cleanup_stream()
-                return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
+                process_manager.switch_stream()
+                return JSONResponse(status_code=401, content={"code": 0, "data": do_not_forward_stream})
             else: # remove the correct streamer from the queue
                 process_manager.stream_queue.remove_client_with_stream_key(stream)
-                return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
+                return JSONResponse(status_code=401, content={"code": 0, "data": do_not_forward_stream})
 
     elif action == 'on_forward':
         lead_stream_key = process_manager.stream_queue.lead_streamer()
@@ -97,6 +94,7 @@ async def on_publish(
         if not lead_stream_key: #If there is no one else in stream queue, just start stream immediately
             if last_stream_key:
                 if BLOCKING and last_stream_key == stream:
+                    
                     return JSONResponse(status_code=401, content={"code": 0, "data": do_not_forward_stream})
                 else:
                     process_manager.delete_last_streamer_key()
