@@ -24,8 +24,7 @@ class Singleton(type):
     
 class StreamManager(metaclass=Singleton):
 
-    is_switching = None
-    current_stream_key = None
+    priority_key = None
 
     last_stream_key = None
     is_blocking_last_streamer = False
@@ -53,49 +52,53 @@ class StreamManager(metaclass=Singleton):
         dj_name = streamer.dj_name
         time_zone = streamer.timezone
         
-        self.current_stream_key = self.stream_queue.lead_streamer()
-        self.is_switching = False
+        self.set_priority_key(None)
         self.current_dj_name = dj_name
         self.time_manager = TimeManager()
         
-
-        self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
-        self.obs_socket_manager.toggle_timer_source(only_off=False)
-
+        # self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
+        # self.obs_socket_manager.toggle_timer_source(only_off=False)
 
         send_discord_message(f"{dj_name} has now started streaming!")
         async_record_stream(stream_key=stream_key,dj_name=dj_name,action="start")
 
-    def update_stream_state(self):
+    def switch_stream(self):
+        # self.obs_socket_manager.toggle_gstreamer_source(only_off=True)
+        # self.obs_socket_manager.toggle_timer_source(only_off=True)
+        # self.obs_socket_manager.toggle_loading_message_source(only_off=True)
+        self.time_manager = None
 
         # remove old state
         old_streamer = self.stream_queue.unqueue_client_stream()
+        logger.debug(f"Removed {old_streamer.stream_key} from the queue")
+        
         # stop recording
         async_record_stream(stream_key=old_streamer.stream_key,dj_name=old_streamer.dj_name,action="stop")
-
-        logger.debug(f"Removed {old_streamer.stream_key} from the queue")
+        
+        self.set_last_stream_key(old_streamer.stream_key)
+        # drop just in case
         drop_stream_publisher(old_streamer.stream_key)
+
         logger.debug(f"Stopped streaming {old_streamer.stream_key}")
 
         send_discord_message(f"{old_streamer.dj_name} has stopped streaming.")
 
         self.set_last_stream_key(old_streamer.stream_key)
 
+
         # Get new state ready
         current_streamer = self.stream_queue.current_streamer()
         if current_streamer:
             self.start_stream(current_streamer)
-            self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
-            self.obs_socket_manager.toggle_timer_source(only_off=False)
+            # self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
+            # self.obs_socket_manager.toggle_timer_source(only_off=False)
 
-            # kick the user to re-init the forwarding
+            # prioritize and kick the user to re-init the forwarding
+            self.set_priority_key(current_streamer.stream_key)
             drop_stream_publisher(current_streamer.stream_key)
         else:
-            self.current_stream_key = None
+            self.set_priority_key(None)
 
-    def get_current_streamer_key(self):
-        return self.current_stream_key
-    
     def delete_last_streamer_key(self):
         self.last_stream_key = None
     def set_last_stream_key(self,key):
@@ -103,10 +106,11 @@ class StreamManager(metaclass=Singleton):
     def get_last_streamer_key(self):
         return self.last_stream_key
     
-    def get_is_switching(self):
-        return self.is_switching
-    def toggle_is_switching(self):
-        self.is_switching = not self.is_switching
+    def get_priority_key(self):
+        return self.priority_key
+    def set_priority_key(self, key):
+        self.priority_key = key
+
 
     def get_is_blocking_last_streamer(self):
         return self.is_blocking_last_streamer
@@ -117,12 +121,8 @@ class StreamManager(metaclass=Singleton):
     def modify_swap_time(self,time, reset_time=False):
         self.time_manager.modify_swap_interval(interval=time,reset_time=reset_time)
     
-    def cleanup_stream(self):
-        self.obs_socket_manager.toggle_gstreamer_source(only_off=True)
-        self.obs_socket_manager.toggle_timer_source(only_off=True)
-        self.obs_socket_manager.toggle_loading_message_source(only_off=True)
-        self.time_manager = None
-        self.update_stream_state()
+
+
 
     # Background thread to manage the stream queue
     def process_queue(self):
@@ -137,27 +137,27 @@ class StreamManager(metaclass=Singleton):
         while True:
 
             motherstream_state = self.stream_queue.get_stream_key_queue_list()
-            print(f'Lead Stream: {self.current_stream_key}, Last Stream: {self.get_last_streamer_key()} State: {motherstream_state} CHANGEOVER: {self.is_switching} BLOCKING: {self.is_blocking_last_streamer}')
+            lead_stream = self.stream_queue.lead_streamer()
+            print(f'Lead Stream: {lead_stream}, Last Stream: {self.get_last_streamer_key()} State: {motherstream_state} PRIORITY: {self.priority_key} BLOCKING: {self.is_blocking_last_streamer}')
             # oryx_state = get_stream_state()
             
             if self.time_manager and self.time_manager.has_swap_interval_elapsed():
                 logger.debug(f"Swap interval of {self.time_manager.get_swap_interval()} seconds elapsed, stopping current stream.")
-                self.last_stream_key = self.current_stream_key
-                self.cleanup_stream()
+                self.switch_stream()
             # Polling sleep time
             time.sleep(3) 
             
-
-            if shazam_thread is None or not shazam_thread.is_alive():
-                logger.info("Attempting to restart song recognition thread")
-                song_recognizer = SongRecognizer()
-                shazam_thread = threading.Thread(target=song_recognizer.recognize_song_full, daemon=True)
-                shazam_thread.start()
-            else:
-                logger.info("Shazam thread is still kicking!")
-                if song_recognizer.song_data != self.current_song_data:
-                    self.current_song_data = song_recognizer.song_data
-                    print(self.current_song_data)
+            if os.environ.get("SHAZAMING") == 'true':
+                if shazam_thread is None or not shazam_thread.is_alive():
+                    # logger.info("Attempting to restart song recognition thread")
+                    song_recognizer = SongRecognizer()
+                    shazam_thread = threading.Thread(target=song_recognizer.recognize_song_full, daemon=True)
+                    shazam_thread.start()
+                else:
+                    # logger.info("Shazam thread is still kicking!")
+                    if song_recognizer.song_data != self.current_song_data:
+                        self.current_song_data = song_recognizer.song_data
+                        print(self.current_song_data)
     
 
 

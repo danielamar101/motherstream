@@ -34,4 +34,4 @@ COPY . /app
 ENV PYTHONPATH="/usr/local/lib/python3.12:/app/dependencies:$PYTHONPATH"
 
 # Command to run the FastAPI app with Uvicorn
-CMD ["opentelemetry-instrument", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8483", "--workers", "3"]
+CMD ["opentelemetry-instrument", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8483"]
