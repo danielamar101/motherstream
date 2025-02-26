@@ -23,6 +23,9 @@ COPY --from=builder /app/dependencies /app/dependencies
 
 # Ensure Uvicorn is installed globally
 RUN pip install --no-cache-dir uvicorn
+RUN pip install opentelemetry-distro opentelemetry-exporter-otlp opentelemetry-instrumentation-fastapi && opentelemetry-bootstrap -a install
+# Install boostrap otel deps
+
 
 # Copy the application code
 COPY . /app
@@ -31,4 +34,4 @@ COPY . /app
 ENV PYTHONPATH="/usr/local/lib/python3.12:/app/dependencies:$PYTHONPATH"
 
 # Command to run the FastAPI app with Uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8483"]
+CMD ["opentelemetry-instrument", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8483", "--workers", "3"]

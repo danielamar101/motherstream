@@ -2,6 +2,8 @@ version: '3.8'
 
 services:
   motherstream:
+    depends_on:
+    - jaeger
     container_name: motherstream
     build:
       context: .  
@@ -57,9 +59,20 @@ services:
     volumes:
       - /home/danielamar/Desktop/onyx:/data
     restart: unless-stopped
-  # certbot:
-  #   image: certbot/certbot:latest
-  #   volumes:
-  #     - ./certbot/www/:/var/www/certbot/:rw
-  #     - ./certs/:/etc/letsencrypt/:rw
+  certbot:
+    container_name: certbot
+    image: certbot/certbot:latest
+    volumes:
+      - ./certbot/www/:/var/www/certbot/:rw
+      - ./certs/:/etc/letsencrypt/:rw
   # TODO: PGSQL container for full containerization
+  jaeger:
+    container_name: jaeger
+    restart: unless-stopped
+    image: jaegertracing/all-in-one:latest
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+    ports:
+      - "16686:16686"
+      - "4317:4317" 
+      - "9411:9411"
