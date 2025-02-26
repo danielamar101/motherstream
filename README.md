@@ -69,6 +69,7 @@ The application requires several environment variables:
 - `DB_PASSWORD`: database password
 - `DB_NAME`: database name
 - `DB_USER`: database user
+- `SHAZAMING`: bool to enable/disable shazam functionality
 
 These variables can be set in the environment with [direnv](https://direnv.net/docs/installation.html). Make your own `.envrc.sample`
 
