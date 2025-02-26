@@ -23,3 +23,4 @@
 - Longer time period for shazmaing tracks
 - Fix algo
 - selectively record streams
+- Persist queue state in dockerized env

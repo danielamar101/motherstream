@@ -175,3 +175,5 @@ websockets==13.0.1
     # via uvicorn
 yarl==1.16.0
     # via aiohttp
+opentelemetry-distro
+debugpy

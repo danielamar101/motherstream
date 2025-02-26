@@ -1,4 +1,11 @@
 
+Assumptions:
+
+1. If the current streamer stops streaming (on_unpublish), they lose their spot at the front
+2. Once a streamer reaches the front of the queue, they will unpublish (via a kick) and are expected to republish through automatic retry mechanism in OBS
+3. If a non-current streamer stops streaming, they lose their spot as well
+4. Only unique stream keys join.
+
 Motherstream algorithm
 
 
@@ -10,17 +17,24 @@ Current Stream: User 1, Next Stream: None, State: [User1]
 # 2. User 2 enters the queue (on_publish)                  
 Current Stream: User 1, Next Stream: User 2, State: [User1,User2]
 #    If there is a current stream active, and the stream != User 2
-        -> add user to queue
+        -> add user 2 to queue
         -> do not forward User 2
+# 2. User 3 enters the queue (on_publish)                  
+Current Stream: User 1, Next Stream: User 2, State: [User1,User2, USer3]
+#    If there is a current stream active, and the stream != User 3
+        -> add user 2 to queue
+        -> do not forward User 2
+
 # 3. User 1 leaves the stream or is kicked: (on_unpublish)
 #    If user is the current streamer and is_switching = False
         update_state:
+        -> quarantined_streamer = User 1
         -> is_switching = True
         -> current_stream_key = User 2
-        -> next_stream_key = None                        
+        -> next_stream_key = next in line                        
 Current Stream: User 2, Next Stream: None, State: [User2], is_switching: True
 # 3a. If User 1 kicked, OBS reconnect logic kicks in (on_publish)
-#    If there is a current stream active, and the stream != User 1
+#    If there is a current stream active, and the stream 
         -> add User 1 to the queue
         -> do not forward User 1
 Current Stream: User 2, Next Stream: User 1, State: [User2, User1], is_switching: True
