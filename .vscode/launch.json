@@ -4,6 +4,7 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
         {
             "name": "Python Debugger: Remote Attach",
             "type": "debugpy",
@@ -15,7 +16,7 @@
             "pathMappings": [
                 {
                     "localRoot": "${workspaceFolder}",
-                    "remoteRoot": "/home/danielamar/Desktop/motherstream"
+                    "remoteRoot": "/home/admin/motherstream"
                 }
             ]
         }

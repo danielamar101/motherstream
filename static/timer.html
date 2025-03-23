@@ -15,7 +15,7 @@
                 // Update the countdown every 1 second
                 var x = setInterval(async function() {
                     
-                    const response = await fetch('https://always12.duckdns.org/timer-data');
+                    const response = await fetch('https://always12.live/timer-data');
                     const data = await response.json();
                     var remaining_time = data['remaining_time'];
                     console.log(remaining_time)

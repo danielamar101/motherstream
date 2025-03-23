@@ -95,9 +95,8 @@ class StreamQueue(metaclass=Singleton):
         try:
             user = self.get_full_user_object_with_stream_key(stream_key)
             self.stream_queue.remove(user)
-        except ValueError as e:
-            logger.error("Client isnt in the queue so no removal happened")
-
+        except Exception as e:
+            logger.debug(f"Client isnt in the queue so no removal happened: {e}")
 
     def clear_queue(self):
         self.stream_queue = []
