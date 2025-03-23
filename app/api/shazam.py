@@ -16,7 +16,7 @@ process = None
 # Configuration Constants
 RATE = 44100           # Sample rate
 CHANNELS = 1           # Number of audio channels
-SECONDS = 10           # Duration to buffer before sending to Shazam
+SECONDS = 20           # Duration to buffer before sending to Shazam
 FFMPEG_INPUT = "rtmp://always12.live/motherstream/live"  # Replace with your RTMP input
 SONG_DATA = {}
 

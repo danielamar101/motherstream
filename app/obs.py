@@ -35,7 +35,7 @@ class OBSSocketManager():
         logger.debug("Connecting to websocket...")
         self.__connect()
 
-        # self.start_loading_message_thread()
+        self.start_loading_message_thread()
 
         self.toggle_obs_source(source_name="Queue", scene_name="MOTHERSTREAM", toggle_timespan=1)
     
@@ -143,7 +143,13 @@ class OBSSocketManager():
         try:
             logger.info("Sleeping before turning on gmotherstream source")
             time.sleep(3)
-            self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=1, only_off=only_off)
+            # First toggle off
+            self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=1, only_off=True)
+            # Wait a bit for the source to fully stop
+            time.sleep(2)
+            # Then toggle back on if not only_off
+            if not only_off:
+                self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=1, only_off=False)
         except Exception as e:
             logger.error(f"Error toggling off {scene_name}:{source_name}. {e}")
     

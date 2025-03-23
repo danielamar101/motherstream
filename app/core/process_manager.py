@@ -8,9 +8,10 @@ import asyncio
 from ..lock_manager import lock as queue_lock
 from .time_manager import TimeManager
 from ..obs import OBSSocketManager
-from .srs_stream_manager import drop_stream_publisher, async_record_stream
+from .srs_stream_manager import drop_stream_publisher, record_stream
 from app.api.discord import send_discord_message
 from app.api.shazam import SongRecognizer
+from ..core.queue import StreamQueue
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +33,16 @@ class StreamManager(metaclass=Singleton):
     stream_queue = None
     obs_socket_manager = None
     time_manager = None
-
     current_song_data = None
 
     def __init__(self, stream_queue):
         self.stream_queue = stream_queue
         self.obs_socket_manager = OBSSocketManager(stream_queue)
+        self.time_manager = None
+        self.priority_key = None
+        self.last_stream_key = None
+        self.is_blocking_last_streamer = False
+        self.current_dj_name = None
 
     def set_song_data(self,song_data):
         self.song_data = song_data
@@ -45,22 +50,37 @@ class StreamManager(metaclass=Singleton):
     def get_song_data(self):
         return self.song_data
 
-    async def start_stream(self,streamer):
+    async def start_stream(self, streamer):
         """Start streaming asynchronously"""
         try:
-            # Run blocking operations in thread pool
+            stream_key = streamer.stream_key
+            dj_name = streamer.dj_name
+            time_zone = streamer.timezone
+            
+            self.set_priority_key(None)
+            self.current_dj_name = dj_name
+            self.time_manager = TimeManager()
+            
+            # Run OBS operations in a thread pool to prevent blocking
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self._start_stream_sync, streamer)
+            await loop.run_in_executor(None, self._handle_start_obs_operations)
+            
+            # Start recording asynchronously
+            await record_stream(stream_key=stream_key, dj_name=dj_name, action="start")
+            
+            # Send Discord message in background
+            loop.create_task(self._send_discord_message_background(f"{dj_name} has now started streaming!"))
+            
         except Exception as e:
-            logger.error(f"Error starting stream: {e}")
+            logger.error(f"Error in start_stream: {e}")
 
-    def _start_stream_sync(self, streamer):
-        """Synchronous part of starting stream"""
-        self.obs_socket_manager.toggle_gstreamer_source(only_on=True)
-        self.obs_socket_manager.toggle_timer_source(only_on=True)
-        self.obs_socket_manager.toggle_loading_message_source(only_on=True)
+    def _handle_start_obs_operations(self):
+        """Handle OBS operations for starting stream in a separate thread"""
+        self.obs_socket_manager.toggle_gstreamer_source(only_off=True)
+        self.obs_socket_manager.toggle_timer_source(only_off=False)
+        self.obs_socket_manager.toggle_loading_message_source(only_off=False)
+        self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
         self.obs_socket_manager.obs_process_call_queue()
-        self.time_manager = TimeManager(streamer)
 
     async def switch_stream(self):
         """Asynchronously handle stream switching"""

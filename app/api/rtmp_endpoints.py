@@ -32,10 +32,10 @@ async def handle_stream_operations(stream: str, user: dict, action: str):
                     else:
                         process_manager.delete_last_streamer_key()
                         process_manager.stream_queue.queue_client_stream(user)
-                        process_manager.start_stream(user)
+                        await process_manager.start_stream(user)
                 else:
                     process_manager.stream_queue.queue_client_stream(user)
-                    process_manager.start_stream(user)
+                    await process_manager.start_stream(user)
             elif lead_stream_key and lead_stream_key == stream:
                 return
             elif lead_stream_key and lead_stream_key != stream:
@@ -49,7 +49,7 @@ async def handle_stream_operations(stream: str, user: dict, action: str):
                 process_manager.set_priority_key(None)
             else:
                 if stream and stream == lead_stream_key:
-                    process_manager.switch_stream()
+                    await process_manager.switch_stream()
                 else:
                     process_manager.stream_queue.remove_client_with_stream_key(stream)
 
