@@ -91,12 +91,19 @@ class StreamQueue(metaclass=Singleton):
         self._write_persistent_state()
         return last_user
     
-    def remove_client_with_stream_key(self,stream_key):
+    def remove_client_with_stream_key(self, stream_key):
         try:
-            user = self.get_full_user_object_with_stream_key(stream_key)
-            self.stream_queue.remove(user)
+            user_to_remove = None
+            for user in self.stream_queue:
+                if user.stream_key == stream_key:
+                    user_to_remove = user
+                    break
+            if user_to_remove:
+                self.stream_queue.remove(user_to_remove)
+            else:
+                logger.debug(f"No user with stream key {stream_key} found in the queue")
         except Exception as e:
-            logger.debug(f"Client isnt in the queue so no removal happened: {e}")
+            logger.debug(f"Error removing user with stream key: {e}")
 
     def clear_queue(self):
         self.stream_queue = []

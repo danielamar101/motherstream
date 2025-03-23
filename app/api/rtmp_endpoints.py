@@ -39,7 +39,6 @@ async def on_publish(
     }
     print(request_obj)
 
-    record_stream = os.getenv('RECORD_STREAM')
     forward_stream = {
         "urls": [
             f"rtmp://127.0.0.1:1935/motherstream/live{param}"
@@ -49,6 +48,8 @@ async def on_publish(
         "urls": [
         ]
     }
+    
+    record_stream = os.getenv('RECORD_STREAM')
     if record_stream: 
         forward_stream["urls"].append(f"rtmp://127.0.0.1:1936/live/{stream}") #nginx record path
 

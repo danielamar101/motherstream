@@ -32,6 +32,14 @@ class User(UserCreate):
     model_config = {
         'from_attributes': True
     }
+
+    def __eq__(self, other):
+        if isinstance(other, User):
+            return self.dj_name == other.dj_name
+        return False
+
+    def __hash__(self):
+        return hash(self.dj_name)
     
 class UserUpdateMe(BaseModel):
     dj_name: Optional[str] = None
