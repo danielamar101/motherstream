@@ -4,7 +4,6 @@ import sentry_sdk
 from contextlib import asynccontextmanager
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
-import subprocess
 import logging
 import os
 
@@ -12,6 +11,8 @@ from app.api.exceptions import register_exception
 from app.app import register_app
 from app.core.queue import StreamQueue
 from app.core.process_manager import StreamManager
+
+from fastapi_utils.tasks import repeat_every
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -36,11 +37,36 @@ SENTRY_DSN = os.environ.get("SENTRY_DSN")
 #     profiles_sample_rate=1.0,
 # )
 
+stream_queue = None
+process_manager = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global stream_queue
+    global process_manager
 
     logger.info("SERVER STARTUP.")
-    # Update stream queue vars upon startup
+
+        # Update stream queue vars upon startup
+    stream_queue = StreamQueue()
+
+    logger.info("Instantiating Stream Manager...")
+    process_manager = StreamManager(stream_queue) 
+
+    logger.info("Initializing the queue")
+    process_manager.init_queue()
+
+
+    @repeat_every(seconds=3) 
+    async def run_process_queue():
+        process_manager.process_queue()
+
+    await run_process_queue()
+
+    register_exception(app)
+    register_app(app)
+
     yield
 
     logger.info("SERVER SHUTDOWN")
@@ -68,17 +94,8 @@ middleware = [ Middleware(
 )
 ]
 
-
 app = FastAPI(lifespan=lifespan, middleware=middleware)
 
-stream_queue = StreamQueue()
-
-logger.info("Starting process manager...")
-
-process_manager = StreamManager(stream_queue) 
-
-register_exception(app)
-register_app(app, process_manager)
 
 
 

@@ -13,3 +13,4 @@ shazamio==0.7.0
 shazamio_core==1.0.7
 opentelemetry-instrumentation-fastapi
 debugpy
+fastapi-utils[all]

@@ -16,10 +16,14 @@ obsws_logger.setLevel(logging.CRITICAL + 1)
 app_api_obs_log = logging.getLogger('app.api.obs')
 # app_api_obs_log.setLevel(logging.CRITICAL + 1)
 
+
 class OBSSocketManager():
 
     obs_websocket = None
     stream_queue = None
+
+    call_queue = []
+
     def __init__(self, stream_queue):
 
         self.stream_queue = stream_queue
@@ -31,7 +35,6 @@ class OBSSocketManager():
         logger.debug("Connecting to websocket...")
         self.__connect()
 
-        # TODO: Evaluate if we want this websocket usage
         # self.start_loading_message_thread()
 
         self.toggle_obs_source(source_name="Queue", scene_name="MOTHERSTREAM", toggle_timespan=1)
@@ -95,12 +98,12 @@ class OBSSocketManager():
                 #3. Hide/unhide the source in the current scene only if it is on already
                 if self.is_source_visible(source_name,scene_name):
                     logger.debug(f"TOGGLING OBS {scene_name}:{source_name} OFF")
-                    self.obs_websocket.call(requests.SetSceneItemEnabled(sceneName=scene_name, sceneItemId=scene_id, sceneItemEnabled=False))
+                    self.queue_obs_command(requests.SetSceneItemEnabled(sceneName=scene_name, sceneItemId=scene_id, sceneItemEnabled=False))
                     time.sleep(toggle_timespan)
                     
                 if not only_off:
                     logger.debug(f"TOGGLING OBS {scene_name}:{source_name} ON")
-                    self.obs_websocket.call(requests.SetSceneItemEnabled(sceneName=scene_name, sceneItemId=scene_id, sceneItemEnabled=True))
+                    self.queue_obs_command(requests.SetSceneItemEnabled(sceneName=scene_name, sceneItemId=scene_id, sceneItemEnabled=True))
                     time.sleep(toggle_timespan)
                     logger.info("...done toggling.")
             except WebSocketConnectionClosedException as e:
@@ -122,7 +125,6 @@ class OBSSocketManager():
                 logger.debug("TOGGLING NEXT STREAM IS LOADING MSG...")
                 self.toggle_loading_message_source(only_off=False)
             
-
     def start_loading_message_thread(self):
         print("Starting loading message toggle thread..")
         threading.Thread(target=self.flash_loading_message, daemon=True).start()
@@ -155,3 +157,13 @@ class OBSSocketManager():
             self.toggle_obs_source(source_name=time_remaining_text, scene_name=scene_name, toggle_timespan=1, only_off=only_off)
         except Exception as e:
             logger.error(f"Error toggling off {scene_name}:{source_name}. {e}")
+
+    def queue_obs_command(self,command):
+        self.call_queue.append(command)
+
+    def obs_process_call_queue(self):
+
+        while self.call_queue:
+            time.sleep(1)
+            command = self.call_queue.pop()
+            self.obs_websocket.call(command)
