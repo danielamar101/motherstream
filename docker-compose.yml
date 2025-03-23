@@ -1,9 +1,9 @@
-version: '3.8'
-
 services:
   motherstream:
     depends_on:
     - jaeger
+    - postgres
+    - oryx
     container_name: motherstream
     build:
       context: .  
@@ -38,10 +38,10 @@ services:
       - ./nginx-config/nginx.conf:/etc/nginx/nginx.conf
       - ./nginx-config/rtmp.conf:/etc/nginx/rtmp.conf
       - ./nginx-config/https-config.conf:/etc/nginx/conf.d/https-config.conf
+      - ./nginx-config/stat.xsl:/var/www/stat.xsl
+      - /var/www/streams/stream-recordings:/var/www/streams/stream-recordings
       - ./certs/:/etc/letsencrypt/
       - ./certbot/www/:/var/www/certbot/:ro
-      - /var/www/streams/stream-recordings:/var/www/streams/stream-recordings
-      - ./nginx-config/stat.xsl:/var/www/stat.xsl
     # ports:
     #   - 1936:1936
   oryx:
@@ -51,21 +51,14 @@ services:
       - nginx-rtmp
     image: ossrs/oryx:5.15.20
     # ports:
-    #   - 2022:2022
+      # - 2022:2022
     #   - 1935:1935
     #   - 8080:8080
     #   - 8000:8000/udp
     #   - 10800:10800/udp
     volumes:
-      - /home/danielamar/Desktop/onyx:/data
+      - ./oryx/:/data
     restart: unless-stopped
-  # certbot:
-  #   container_name: certbot
-  #   image: certbot/certbot:latest
-  #   volumes:
-  #     - ./certbot/www/:/var/www/certbot/:rw
-  #     - ./certs/:/etc/letsencrypt/:rw
-  # TODO: PGSQL container for full containerization
   jaeger:
     container_name: jaeger
     restart: unless-stopped
@@ -76,3 +69,16 @@ services:
       - "16686:16686"
       - "4317:4317" 
       - "9411:9411"
+  
+  postgres:
+    network_mode: host
+    image: postgres:15.12
+    container_name: postgres
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USER}
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data

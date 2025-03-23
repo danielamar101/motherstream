@@ -1,1 +1,1 @@
-sudo docker-compose run --rm certbot certonly --webroot --webroot-path /var/www/certbot/ -d always12.duckdns.org
+sudo docker compose run --rm certbot certonly --webroot --webroot-path ./certbot -d always12.live

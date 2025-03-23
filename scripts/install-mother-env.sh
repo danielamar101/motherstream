@@ -16,5 +16,5 @@ echo \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 sudo apt-get update
 
-sudo apt install git-all
 
+curl -fsSL https://tailscale.com/install.sh | sh

@@ -138,7 +138,7 @@ class StreamManager(metaclass=Singleton):
 
             motherstream_state = self.stream_queue.get_stream_key_queue_list()
             lead_stream = self.stream_queue.lead_streamer()
-            print(f'Lead Stream: {lead_stream}, Last Stream: {self.get_last_streamer_key()} State: {motherstream_state} PRIORITY: {self.priority_key} BLOCKING: {self.is_blocking_last_streamer}')
+            logger.info(f'Lead Stream: {lead_stream}, Last Stream: {self.get_last_streamer_key()} State: {motherstream_state} PRIORITY: {self.priority_key} BLOCKING: {self.is_blocking_last_streamer}')
             # oryx_state = get_stream_state()
             
             if self.time_manager and self.time_manager.has_swap_interval_elapsed():

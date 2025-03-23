@@ -50,12 +50,14 @@ origins = [
     "http://192.168.1.100:5173", 
     "http://localhost:5173",     
     "http://localhost", 
-    "https://always12.duckdns.org/", 
-    "http://always12.duckdns.org/",
+    "https://always12.live/", 
+    "http://always12.live/",
     "http://raspberry:5173/",
     "http://motherstream.xyz",    
     "https://motherstream.xyz",    
-    "https://motherstream.live"    
+    "https://motherstream.live",
+    "http://54.164.3.167",    
+    "http://54.164.3.167:5173",    
 ]
 middleware = [ Middleware(
     CORSMiddleware,
