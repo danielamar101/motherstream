@@ -101,7 +101,7 @@ class OBSSocketManager():
                 if not only_off:
                     logger.debug(f"TOGGLING OBS {scene_name}:{source_name} ON")
                     self.obs_websocket.call(requests.SetSceneItemEnabled(sceneName=scene_name, sceneItemId=scene_id, sceneItemEnabled=True))
-                    time.sleep(toggle_timespan)
+                    # time.sleep(toggle_timespan)
                     logger.info("...done toggling.")
             except WebSocketConnectionClosedException as e:
                 logger.error("WebSocket is closed. Is the OBS app open?")
@@ -139,9 +139,7 @@ class OBSSocketManager():
         source_name = 'GMOTHERSTREAM'
         scene_name = 'MOTHERSTREAM'
         try:
-            logger.info("Sleeping before turning on gmotherstream source")
-            time.sleep(3)
-            self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=1, only_off=only_off)
+            self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=5, only_off=only_off)
         except Exception as e:
             logger.error(f"Error toggling off {scene_name}:{source_name}. {e}")
     

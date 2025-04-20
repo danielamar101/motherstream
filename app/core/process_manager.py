@@ -63,7 +63,7 @@ class StreamManager(metaclass=Singleton):
         async_record_stream(stream_key=stream_key,dj_name=dj_name,action="start")
 
     def switch_stream(self):
-        # self.obs_socket_manager.toggle_gstreamer_source(only_off=True)
+        self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
         # self.obs_socket_manager.toggle_timer_source(only_off=True)
         # self.obs_socket_manager.toggle_loading_message_source(only_off=True)
         self.time_manager = None
