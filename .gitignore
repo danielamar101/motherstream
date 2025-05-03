@@ -1,6 +1,6 @@
 .envrc
 .vscode/launch.json
-
+.venv/
 
 __pycache__
 ffmpeg.log
@@ -12,3 +12,6 @@ certs/
 certbot/
 ShazamIO
 .terraform/
+docker-compose-certbot.yml
+oryx/
+stream-recordings/
