@@ -13,7 +13,7 @@ services:
     network_mode: host
     env_file: .env
     volumes:
-      - /var/www/streams/stream-recordings:/var/www/streams/stream-recordings
+      - ./stream-recordings:/var/www/streams/stream-recordings
     restart: unless-stopped
 
   frontend:
@@ -39,7 +39,7 @@ services:
       - ./nginx-config/rtmp.conf:/etc/nginx/rtmp.conf
       - ./nginx-config/https-config.conf:/etc/nginx/conf.d/https-config.conf
       - ./nginx-config/stat.xsl:/var/www/stat.xsl
-      - /var/www/streams/stream-recordings:/var/www/streams/stream-recordings
+      - ./stream-recordings:/var/www/streams/stream-recordings
       - ./certs/:/etc/letsencrypt/
       - ./certbot/www/:/var/www/certbot/:ro
     # ports:
