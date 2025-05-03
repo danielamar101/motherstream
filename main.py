@@ -56,8 +56,9 @@ origins = [
     "http://motherstream.xyz",    
     "https://motherstream.xyz",    
     "https://motherstream.live",
-    "http://54.164.3.167",    
-    "http://54.164.3.167:5173",    
+    "http://motherstream.live",
+    "http://54.164.3.167",
+    "http://54.164.3.167:5173",
 ]
 middleware = [ Middleware(
     CORSMiddleware,

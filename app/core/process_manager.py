@@ -7,10 +7,16 @@ import logging
 
 from ..lock_manager import lock as queue_lock
 from .time_manager import TimeManager
-from ..obs import OBSSocketManager
-from .srs_stream_manager import drop_stream_publisher, get_stream_state, async_record_stream
-from app.api.discord import send_discord_message
+# Import the global OBS instance instead of the class
+from ..obs import obs_socket_manager_instance
+# Remove direct imports of functions now handled by worker
+# from .srs_stream_manager import drop_stream_publisher, get_stream_state, async_record_stream
+# from app.api.discord import send_discord_message
+from .srs_stream_manager import get_stream_state # Keep if needed elsewhere
 from app.api.shazam import SongRecognizer
+
+# Import job queue functions
+from app.core.worker import add_job, JobType
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +37,16 @@ class StreamManager(metaclass=Singleton):
 
     current_dj_name = None
     stream_queue = None
-    obs_socket_manager = None
+    # Use the global OBS instance
+    obs_socket_manager = obs_socket_manager_instance
     time_manager = None
 
     current_song_data = None
 
     def __init__(self, stream_queue):
         self.stream_queue = stream_queue
-        self.obs_socket_manager = OBSSocketManager(stream_queue)
+        # No longer need to instantiate OBSSocketManager here
+        # self.obs_socket_manager = OBSSocketManager(stream_queue)
 
     def set_song_data(self,song_data):
         self.song_data = song_data
@@ -59,45 +67,70 @@ class StreamManager(metaclass=Singleton):
         # self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
         # self.obs_socket_manager.toggle_timer_source(only_off=False)
 
-        send_discord_message(f"{dj_name} has now started streaming!")
-        async_record_stream(stream_key=stream_key,dj_name=dj_name,action="start")
+        # Replace direct calls with enqueuing a job
+        # send_discord_message(f"{dj_name} has now started streaming!")
+        # async_record_stream(stream_key=stream_key,dj_name=dj_name,action="start")
+        add_job(JobType.START_STREAM, payload={"stream_key": stream_key, "dj_name": dj_name})
+        logger.info(f"Enqueued START_STREAM job for DJ: {dj_name} with key: {stream_key}")
 
     def switch_stream(self):
-        self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
-        # self.obs_socket_manager.toggle_timer_source(only_off=True)
-        # self.obs_socket_manager.toggle_loading_message_source(only_off=True)
-        self.time_manager = None
+        logger.info("Initiating stream switch...")
 
-        # remove old state
+        # 1. Get the streamer to be removed
         old_streamer = self.stream_queue.unqueue_client_stream()
-        logger.debug(f"Removed {old_streamer.stream_key} from the queue")
-        
-        # stop recording
-        async_record_stream(stream_key=old_streamer.stream_key,dj_name=old_streamer.dj_name,action="stop")
-        
+        if not old_streamer:
+            logger.warning("switch_stream called but no current streamer to remove.")
+            return # Nothing to switch from
+
+        logger.debug(f"Switching away from: {old_streamer.dj_name} ({old_streamer.stream_key})")
+
+        # Enqueue jobs for the old streamer teardown
+        # self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
+        # Let's enqueue a job to turn gstreamer source OFF as part of teardown
+        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "gstreamer", "only_off": True, "toggle_timespan": 5})
+        logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer off)")
+
+        # Stop recording old stream
+        add_job(JobType.STOP_RECORDING, payload={"stream_key": old_streamer.stream_key, "dj_name": old_streamer.dj_name})
+        logger.debug(f"Enqueued STOP_RECORDING job for {old_streamer.dj_name}")
+
+        # Kick old streamer publisher
+        add_job(JobType.KICK_PUBLISHER, payload={"stream_key": old_streamer.stream_key})
+        logger.debug(f"Enqueued KICK_PUBLISHER job for {old_streamer.stream_key}")
+
+        # Send Discord notification for old streamer stopped
+        add_job(JobType.SEND_DISCORD_MESSAGE, payload={"message": f"{old_streamer.dj_name} has stopped streaming."}) 
+        logger.debug(f"Enqueued SEND_DISCORD_MESSAGE job for {old_streamer.dj_name} stopped")
+
+        # Update internal state related to the old streamer
         self.set_last_stream_key(old_streamer.stream_key)
-        # drop just in case
-        drop_stream_publisher(old_streamer.stream_key)
+        self.time_manager = None # Reset timer since the stream ended
+        logger.debug(f"Updated internal state: last_stream_key={old_streamer.stream_key}, time_manager reset.")
 
-        logger.debug(f"Stopped streaming {old_streamer.stream_key}")
-
-        send_discord_message(f"{old_streamer.dj_name} has stopped streaming.")
-
-        self.set_last_stream_key(old_streamer.stream_key)
-
-
-        # Get new state ready
+        # 2. Get the next streamer (if any)
         current_streamer = self.stream_queue.current_streamer()
         if current_streamer:
+            logger.info(f"Switching to new streamer: {current_streamer.dj_name}")
+            # This call now correctly updates internal state and enqueues START_STREAM job
             self.start_stream(current_streamer)
-            # self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
-            # self.obs_socket_manager.toggle_timer_source(only_off=False)
+            logger.debug(f"Called start_stream for {current_streamer.dj_name}")
 
-            # prioritize and kick the user to re-init the forwarding
+            # Enqueue job to kick the *new* streamer to force re-init/prioritize
+            add_job(JobType.KICK_PUBLISHER, payload={"stream_key": current_streamer.stream_key})
+            logger.debug(f"Enqueued KICK_PUBLISHER job for new streamer {current_streamer.stream_key}")
+
+            # Prioritize new streamer (Internal state)
             self.set_priority_key(current_streamer.stream_key)
-            drop_stream_publisher(current_streamer.stream_key)
+            logger.debug(f"Set priority key to {current_streamer.stream_key}")
         else:
+            logger.info("No next streamer in queue.")
+            # No new streamer, clear priority key (Internal state)
             self.set_priority_key(None)
+            # Maybe turn off other OBS sources? e.g., timer? Enqueue job.
+            add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "timer", "only_off": True})
+            logger.debug("Enqueued TOGGLE_OBS_SRC job (timer off)")
+
+        logger.info("Stream switch processing complete (jobs enqueued).")
 
     def delete_last_streamer_key(self):
         self.last_stream_key = None

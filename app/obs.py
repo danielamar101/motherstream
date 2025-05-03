@@ -19,22 +19,25 @@ app_api_obs_log = logging.getLogger('app.api.obs')
 class OBSSocketManager():
 
     obs_websocket = None
-    stream_queue = None
-    def __init__(self, stream_queue):
+    # Removed stream_queue dependency from constructor
+    # stream_queue = None
+    def __init__(self):
+        # Removed stream_queue parameter
+        # self.stream_queue = stream_queue
 
-        self.stream_queue = stream_queue
-
-        self.OBS_HOST = os.environ.get("OBS_HOST")
-        self.OBS_PORT = os.environ.get("OBS_PORT")
+        self.OBS_HOST = os.environ.get("OBS_HOST", "localhost") # Added default
+        self.OBS_PORT = os.environ.get("OBS_PORT", 4455)      # Added default
         self.OBS_PASSWORD = os.environ.get("OBS_PASSWORD")
+        if not self.OBS_PASSWORD:
+            logger.warning("OBS_PASSWORD environment variable not set. Connection might fail.")
         self.obs_websocket = obsws(self.OBS_HOST, self.OBS_PORT, self.OBS_PASSWORD)
         logger.debug("Connecting to websocket...")
         self.__connect()
 
-        # TODO: Evaluate if we want this websocket usage
+        # TODO: Evaluate if we want this websocket usage - This used stream_queue
         # self.start_loading_message_thread()
 
-        self.toggle_obs_source(source_name="Queue", scene_name="MOTHERSTREAM", toggle_timespan=1)
+        # self.toggle_obs_source(source_name="Queue", scene_name="MOTHERSTREAM", toggle_timespan=1)
     
     def __connect(self):
         try:
@@ -153,3 +156,8 @@ class OBSSocketManager():
             self.toggle_obs_source(source_name=time_remaining_text, scene_name=scene_name, toggle_timespan=1, only_off=only_off)
         except Exception as e:
             logger.error(f"Error toggling off {scene_name}:{source_name}. {e}")
+
+# Create a global instance
+# Ensure environment variables are loaded before this point if running as script
+# In a FastAPI context, this will run when the module is imported.
+obs_socket_manager_instance = OBSSocketManager()
