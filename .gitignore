@@ -15,3 +15,5 @@ ShazamIO
 docker-compose-certbot.yml
 oryx/
 stream-recordings/
+pgdata/
+pg/

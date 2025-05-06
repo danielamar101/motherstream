@@ -1,8 +1,9 @@
 import threading
 import logging
-from fastapi.middleware.cors import CORSMiddleware 
 
 
+# Import the worker module - this starts the worker thread
+from app.core import worker
 
 logger = logging.getLogger(__name__)
 
