@@ -73,6 +73,10 @@ class StreamManager(metaclass=Singleton):
         add_job(JobType.START_STREAM, payload={"stream_key": stream_key, "dj_name": dj_name})
         logger.info(f"Enqueued START_STREAM job for DJ: {dj_name} with key: {stream_key}")
 
+        # Enqueue job to restart the GStreamer media source
+        add_job(JobType.RESTART_MEDIA_SOURCE, payload={"source_name": "GMOTHERSTREAM"})
+        logger.debug("Enqueued RESTART_MEDIA_SOURCE job for GMOTHERSTREAM")
+
     def switch_stream(self):
         logger.info("Initiating stream switch...")
 
@@ -87,7 +91,7 @@ class StreamManager(metaclass=Singleton):
         # Enqueue jobs for the old streamer teardown
         # self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
         # Let's enqueue a job to turn gstreamer source OFF as part of teardown
-        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "gstreamer", "only_off": True, "toggle_timespan": 5})
+        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True, "toggle_timespan": 5})
         logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer off)")
 
         # Stop recording old stream
@@ -172,6 +176,9 @@ class StreamManager(metaclass=Singleton):
             motherstream_state = self.stream_queue.get_stream_key_queue_list()
             lead_stream = self.stream_queue.lead_streamer()
             logger.info(f'Lead Stream: {lead_stream}, Last Stream: {self.get_last_streamer_key()} State: {motherstream_state} PRIORITY: {self.priority_key} BLOCKING: {self.is_blocking_last_streamer}')
+            if not lead_stream:
+                add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True, "toggle_timespan": 1})
+                logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer off)")
             # oryx_state = get_stream_state()
             
             if self.time_manager and self.time_manager.has_swap_interval_elapsed():

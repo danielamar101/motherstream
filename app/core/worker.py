@@ -35,6 +35,7 @@ class JobType(Enum):
     RENAME_RECORDING = "rename_recording"
     STOP_RECORDING   = "stop_recording"   # New job type
     SEND_DISCORD_MESSAGE = "send_discord_message" # New job type
+    RESTART_MEDIA_SOURCE = "restart_media_source" # New job type for restarting media sources
     # Add other atomic actions relevant to your application here
 
 @dataclass
@@ -125,6 +126,23 @@ def dispatch(job: Job):
                 send_discord_message(message)
             else:
                 logger.warning("SEND_DISCORD_MESSAGE job missing 'message' in payload")
+
+        elif job.type == JobType.RESTART_MEDIA_SOURCE:
+            source_name = job.payload.get("source_name")
+            if source_name:
+                logger.info(f"Restarting OBS media source: {source_name}")
+                # Assuming obs_socket_manager_instance has a method like 'restart_media_source'
+                # If not, we need to implement it or use the direct API call structure
+                try:
+                    obs_socket_manager_instance.restart_media_source(input_name=source_name)
+                    logger.info(f"Successfully triggered restart for media source: {source_name}")
+                except AttributeError:
+                    logger.error(f"'restart_media_source' method not found on obs_socket_manager_instance. You need to implement this.")
+
+                except Exception as e:
+                     logger.error(f"Error restarting media source {source_name}: {e}", exc_info=True)
+            else:
+                 logger.warning("RESTART_MEDIA_SOURCE job missing 'source_name' in payload")
 
         else:
             # Consider logging an error or raising for unhandled job types

@@ -157,6 +157,45 @@ class OBSSocketManager():
         except Exception as e:
             logger.error(f"Error toggling off {scene_name}:{source_name}. {e}")
 
+    def restart_media_source(self, input_name: str):
+        """Sends a request to OBS to restart a specific media source."""
+        action = "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART"
+        logger.info(f"Attempting to restart media source: {input_name} using action: {action}")
+        with obs_lock: # Ensure thread safety when interacting with OBS
+            try:
+                request = requests.TriggerMediaInputAction(inputName=input_name, mediaAction=action)
+                response = self.obs_websocket.call(request)
+                
+                # obs-websocket-py >= 0.8.0 uses get_request_status() method
+                if hasattr(response, 'get_request_status') and callable(getattr(response, 'get_request_status')):
+                     status = response.get_request_status()
+                     if status.result:
+                        logger.info(f"Successfully triggered restart for media source: {input_name}")
+                     else:
+                        logger.error(f"Failed to restart media source {input_name}. OBS Error: {status.comment}")
+                # Older versions might have status directly in datain or a simple status attribute
+                elif hasattr(response, 'datain') and 'status' in response.datain:
+                    if response.datain['status'] == 'ok':
+                         logger.info(f"Successfully triggered restart for media source: {input_name}")
+                    else:
+                         logger.error(f"Failed to restart media source {input_name}. OBS Error: {response.datain.get('error', 'Unknown error')}")
+                elif hasattr(response, 'status') and response.status == 'ok':
+                     logger.info(f"Successfully triggered restart for media source: {input_name}")
+                else:
+                    # Fallback logging if response structure is unexpected
+                    logger.warning(f"Restart command sent for {input_name}, but couldn't determine success status from response: {response}")
+                    
+            except WebSocketConnectionClosedException:
+                logger.error(f"Failed to restart media source {input_name}: WebSocket is closed. Is OBS running?")
+                # Attempt to reconnect
+                logger.info("Attempting to reconnect to OBS WebSocket...")
+                self.__connect()
+                # Optionally, you might want to retry the action after reconnecting
+            except Exception as e:
+                logger.error(f"An error occurred while trying to restart media source {input_name}: {e}", exc_info=True)
+                # Consider if reconnection is needed here too
+                # self.__connect()
+
 # Create a global instance
 # Ensure environment variables are loaded before this point if running as script
 # In a FastAPI context, this will run when the module is imported.
