@@ -61,16 +61,24 @@ async def on_publish(
         PRIORITY = process_manager.get_priority_key()
         lead_stream_key = process_manager.stream_queue.lead_streamer()
 
+        if stream and stream != lead_stream_key:
+            # streamer in the queue but not lead left, just update state
+            print("Removing streamer from queue")
+            process_manager.stream_queue.remove_client_with_stream_key(stream)
+            return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
+        
         if PRIORITY and PRIORITY == stream:
             process_manager.set_priority_key(None)
             return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
         else:
             if stream and stream == lead_stream_key:
                 process_manager.switch_stream()
-                return JSONResponse(status_code=401, content={"code": 0, "data": do_not_forward_stream})
+                return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
             else: # remove the correct streamer from the queue
+                print("Removing streamer from queue")
                 process_manager.stream_queue.remove_client_with_stream_key(stream)
-                return JSONResponse(status_code=401, content={"code": 0, "data": do_not_forward_stream})
+                print("Done")
+                return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
 
     elif action == 'on_forward':
         lead_stream_key = process_manager.stream_queue.lead_streamer()
@@ -98,13 +106,21 @@ async def on_publish(
                     return JSONResponse(status_code=401, content={"code": 0, "data": do_not_forward_stream})
                 else:
                     process_manager.delete_last_streamer_key()
+                    if stream not in process_manager.stream_queue.get_stream_key_queue_list():
+                        process_manager.stream_queue.queue_client_stream(user)
+                        process_manager.start_stream(user)
+                        return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
+                    else:
+                        print("Streamer already in queue")
+                        return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
+            else:
+                if stream not in process_manager.stream_queue.get_stream_key_queue_list():
                     process_manager.stream_queue.queue_client_stream(user)
                     process_manager.start_stream(user)
                     return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
-            else:
-                process_manager.stream_queue.queue_client_stream(user)
-                process_manager.start_stream(user)
-                return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
+                else:
+                    print("Streamer already in queue")
+                    return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
             
         if lead_stream_key and lead_stream_key == stream:
             return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})

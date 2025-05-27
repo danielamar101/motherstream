@@ -1,4 +1,3 @@
-
 import json
 import os
 from pathlib import Path
@@ -93,10 +92,17 @@ class StreamQueue(metaclass=Singleton):
     
     def remove_client_with_stream_key(self,stream_key):
         try:
-            user = self.get_full_user_object_with_stream_key(stream_key)
-            self.stream_queue.remove(user)
+            with queue_lock:
+                # Find and remove the user with matching stream key
+                for i, user in enumerate(self.stream_queue):
+                    if user.stream_key == stream_key:
+                        self.stream_queue.pop(i)
+                        self._write_persistent_state()
+                        logger.debug(f"Successfully removed client with stream key {stream_key} from queue")
+                        return
+                logger.debug(f"No client found with stream key {stream_key} in queue")
         except Exception as e:
-            logger.debug(f"Client isnt in the queue so no removal happened: {e}")
+            logger.exception(f"Error removing client from queue: {e}")
 
     def clear_queue(self):
         self.stream_queue = []

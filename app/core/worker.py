@@ -5,23 +5,10 @@ from queue import Queue
 from enum import Enum
 from dataclasses import dataclass
 
-# TODO: Replace placeholders with actual imports from your application logic
-# e.g., from app.stream_handler import start_stream, switch_stream
-# e.g., from app.obs_manager import toggle_obs_source
-# e.g., from app.srs_manager import kick_publisher
-# e.g., from app.recording_manager import rename_recording
 from app.api.discord import send_discord_message
-from app.core.srs_stream_manager import async_record_stream, drop_stream_publisher # Added drop_stream_publisher for KICK_PUBLISHER
+from app.core.srs_stream_manager import async_record_stream, drop_stream_publisher
 # Import the global OBS instance
 from app.obs import obs_socket_manager_instance
-
-# Placeholder functions for demonstration until actual logic is integrated
-
-# Removed placeholder_start_stream as it's now handled in dispatch
-def placeholder_switch_stream(**kwargs): logging.info(f"Placeholder: Switching stream with {kwargs}")
-# Removed placeholder_toggle_obs_source as it's now handled in dispatch
-# Removed placeholder_kick_publisher as it's now handled in dispatch
-def placeholder_rename_recording(dj_name: str): logging.info(f"Placeholder: Renaming recording for DJ {dj_name}")
 
 
 logger = logging.getLogger(__name__)
@@ -33,10 +20,9 @@ class JobType(Enum):
     TOGGLE_OBS_SRC   = "toggle_obs_source"
     KICK_PUBLISHER   = "kick_publisher"
     RENAME_RECORDING = "rename_recording"
-    STOP_RECORDING   = "stop_recording"   # New job type
-    SEND_DISCORD_MESSAGE = "send_discord_message" # New job type
-    RESTART_MEDIA_SOURCE = "restart_media_source" # New job type for restarting media sources
-    # Add other atomic actions relevant to your application here
+    STOP_RECORDING   = "stop_recording" 
+    SEND_DISCORD_MESSAGE = "send_discord_message" 
+    RESTART_MEDIA_SOURCE = "restart_media_source" 
 
 @dataclass
 class Job:
@@ -61,11 +47,6 @@ def dispatch(job: Job):
                 async_record_stream(stream_key=stream_key, dj_name=dj_name, action="start")
             else:
                 logger.warning("START_STREAM job missing 'stream_key' or 'dj_name' for recording")
-
-        elif job.type == JobType.SWITCH_STREAM:
-            # TODO: Define actual switch logic job if needed, or handle within calling context
-            placeholder_switch_stream(**job.payload)
-
         elif job.type == JobType.TOGGLE_OBS_SRC:
             # Assumes payload contains necessary info like source_name, scene_name, only_off
             source_name = job.payload.get("source_name")
@@ -108,10 +89,6 @@ def dispatch(job: Job):
             else:
                 logger.warning("KICK_PUBLISHER job missing 'stream_key' in payload")
 
-        elif job.type == JobType.RENAME_RECORDING:
-            # Replace with actual function call, e.g., recording_manager.rename_latest(job.payload["dj_name"])
-            placeholder_rename_recording(job.payload["dj_name"])
-
         elif job.type == JobType.STOP_RECORDING:
             dj_name = job.payload.get("dj_name")
             stream_key = job.payload.get("stream_key")
@@ -131,16 +108,8 @@ def dispatch(job: Job):
             source_name = job.payload.get("source_name")
             if source_name:
                 logger.info(f"Restarting OBS media source: {source_name}")
-                # Assuming obs_socket_manager_instance has a method like 'restart_media_source'
-                # If not, we need to implement it or use the direct API call structure
-                try:
-                    obs_socket_manager_instance.restart_media_source(input_name=source_name)
-                    logger.info(f"Successfully triggered restart for media source: {source_name}")
-                except AttributeError:
-                    logger.error(f"'restart_media_source' method not found on obs_socket_manager_instance. You need to implement this.")
-
-                except Exception as e:
-                     logger.error(f"Error restarting media source {source_name}: {e}", exc_info=True)
+                obs_socket_manager_instance.restart_media_source(input_name=source_name)
+                logger.info(f"Successfully triggered restart for media source: {source_name}")
             else:
                  logger.warning("RESTART_MEDIA_SOURCE job missing 'source_name' in payload")
 

@@ -64,14 +64,11 @@ class StreamManager(metaclass=Singleton):
         self.current_dj_name = dj_name
         self.time_manager = TimeManager()
         
-        # self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
-        # self.obs_socket_manager.toggle_timer_source(only_off=False)
-
-        # Replace direct calls with enqueuing a job
-        # send_discord_message(f"{dj_name} has now started streaming!")
-        # async_record_stream(stream_key=stream_key,dj_name=dj_name,action="start")
         add_job(JobType.START_STREAM, payload={"stream_key": stream_key, "dj_name": dj_name})
         logger.info(f"Enqueued START_STREAM job for DJ: {dj_name} with key: {stream_key}")
+
+        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": False, "toggle_timespan": 5})
+        logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer off)")
 
         # Enqueue job to restart the GStreamer media source
         add_job(JobType.RESTART_MEDIA_SOURCE, payload={"source_name": "GMOTHERSTREAM"})

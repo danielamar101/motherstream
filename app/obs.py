@@ -117,34 +117,6 @@ class OBSSocketManager():
                 self.obs_websocket = obsws(self.OBS_HOST, self.OBS_PORT, self.OBS_PASSWORD)
                 self.__connect()
                 time.sleep(2)
-
-    def flash_loading_message(self):
-       
-        while True:
-            if self.stream_queue.get_dj_name_queue_list():
-                logger.debug("TOGGLING NEXT STREAM IS LOADING MSG...")
-                self.toggle_loading_message_source(only_off=False)
-            
-
-    def start_loading_message_thread(self):
-        print("Starting loading message toggle thread..")
-        threading.Thread(target=self.flash_loading_message, daemon=True).start()
-
-    def toggle_loading_message_source(self, only_off=False):
-        source_name = 'LOADING'
-        scene_name = 'MOTHERSTREAM'
-        try:
-            self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=1.5, only_off=only_off)
-        except Exception as e:
-            logger.error(f"Error toggling off {scene_name}:{source_name}. {e}")
-
-    def toggle_gstreamer_source(self, only_off=False):
-        source_name = 'GMOTHERSTREAM'
-        scene_name = 'MOTHERSTREAM'
-        try:
-            self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=5, only_off=only_off)
-        except Exception as e:
-            logger.error(f"Error toggling off {scene_name}:{source_name}. {e}")
     
     def toggle_timer_source(self, only_off=False):
         source_name = 'TIMER1'
@@ -159,42 +131,84 @@ class OBSSocketManager():
 
     def restart_media_source(self, input_name: str):
         """Sends a request to OBS to restart a specific media source."""
-        action = "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART"
-        logger.info(f"Attempting to restart media source: {input_name} using action: {action}")
-        with obs_lock: # Ensure thread safety when interacting with OBS
+        # Try different action strings based on OBS WebSocket version
+        possible_actions = [
+            "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART",
+            "restart",
+            "RESTART"
+        ]
+        
+        logger.info(f"Attempting to restart media source: {input_name}")
+        
+        with obs_lock: 
             try:
-                request = requests.TriggerMediaInputAction(inputName=input_name, mediaAction=action)
-                response = self.obs_websocket.call(request)
+                # First, let's try to get the media input status to see if it exists
+                try:
+                    status_request = requests.GetMediaInputStatus(inputName=input_name)
+                    status_response = self.obs_websocket.call(status_request)
+                    logger.info(f"Media input '{input_name}' status: {status_response.datain}")
+                except Exception as status_error:
+                    logger.warning(f"Could not get status for media input '{input_name}': {status_error}")
                 
-                # obs-websocket-py >= 0.8.0 uses get_request_status() method
-                if hasattr(response, 'get_request_status') and callable(getattr(response, 'get_request_status')):
-                     status = response.get_request_status()
-                     if status.result:
-                        logger.info(f"Successfully triggered restart for media source: {input_name}")
-                     else:
-                        logger.error(f"Failed to restart media source {input_name}. OBS Error: {status.comment}")
-                # Older versions might have status directly in datain or a simple status attribute
-                elif hasattr(response, 'datain') and 'status' in response.datain:
-                    if response.datain['status'] == 'ok':
-                         logger.info(f"Successfully triggered restart for media source: {input_name}")
-                    else:
-                         logger.error(f"Failed to restart media source {input_name}. OBS Error: {response.datain.get('error', 'Unknown error')}")
-                elif hasattr(response, 'status') and response.status == 'ok':
-                     logger.info(f"Successfully triggered restart for media source: {input_name}")
-                else:
-                    # Fallback logging if response structure is unexpected
-                    logger.warning(f"Restart command sent for {input_name}, but couldn't determine success status from response: {response}")
+                # Try each possible action string
+                for action in possible_actions:
+                    try:
+                        logger.info(f"Trying action: {action}")
+                        request = requests.TriggerMediaInputAction(inputName=input_name, mediaAction=action)
+                        response = self.obs_websocket.call(request)
+                        
+                        logger.info(f"Successfully triggered restart for media source: {input_name} using action: {action}")
+                        logger.debug(f"Response: {response.datain if hasattr(response, 'datain') else 'No response data'}")
+                        return True
+                        
+                    except Exception as action_error:
+                        logger.warning(f"Action '{action}' failed for media source {input_name}: {action_error}")
+                        continue
+                
+                # If we get here, all actions failed
+                logger.error(f"All restart actions failed for media source: {input_name}")
+                return False
                     
             except WebSocketConnectionClosedException:
                 logger.error(f"Failed to restart media source {input_name}: WebSocket is closed. Is OBS running?")
                 # Attempt to reconnect
                 logger.info("Attempting to reconnect to OBS WebSocket...")
                 self.__connect()
-                # Optionally, you might want to retry the action after reconnecting
+                return False
             except Exception as e:
                 logger.error(f"An error occurred while trying to restart media source {input_name}: {e}", exc_info=True)
                 # Consider if reconnection is needed here too
-                # self.__connect()
+                self.__connect()
+                return False
+
+    def get_media_input_status(self, input_name: str):
+        """Get the status of a media input for debugging purposes."""
+        logger.info(f"Getting status for media input: {input_name}")
+        with obs_lock:
+            try:
+                request = requests.GetMediaInputStatus(inputName=input_name)
+                response = self.obs_websocket.call(request)
+                logger.info(f"Media input '{input_name}' status: {response.datain}")
+                return response.datain
+            except Exception as e:
+                logger.error(f"Failed to get media input status for {input_name}: {e}")
+                return None
+
+    def list_inputs(self):
+        """List all inputs for debugging purposes."""
+        logger.info("Getting list of all inputs...")
+        with obs_lock:
+            try:
+                request = requests.GetInputList()
+                response = self.obs_websocket.call(request)
+                inputs = response.datain.get('inputs', [])
+                logger.info(f"Found {len(inputs)} inputs:")
+                for input_item in inputs:
+                    logger.info(f"  - {input_item.get('inputName', 'Unknown')} (Type: {input_item.get('inputKind', 'Unknown')})")
+                return inputs
+            except Exception as e:
+                logger.error(f"Failed to get input list: {e}")
+                return []
 
 # Create a global instance
 # Ensure environment variables are loaded before this point if running as script
