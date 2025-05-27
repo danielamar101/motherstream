@@ -14,6 +14,10 @@ from app.obs import obs_socket_manager_instance
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
+# Track the last time an OBS job was executed to add delays
+last_obs_job_time = 0
+OBS_JOB_DELAY = 2.0  # Minimum seconds between OBS jobs to prevent crashes
+
 class JobType(Enum):
     START_STREAM     = "start_stream"
     SWITCH_STREAM    = "switch_stream"
@@ -22,7 +26,7 @@ class JobType(Enum):
     RENAME_RECORDING = "rename_recording"
     STOP_RECORDING   = "stop_recording" 
     SEND_DISCORD_MESSAGE = "send_discord_message" 
-    RESTART_MEDIA_SOURCE = "restart_media_source" 
+    RESTART_MEDIA_SOURCE = "restart_media_source"
 
 @dataclass
 class Job:
@@ -31,9 +35,32 @@ class Job:
 
 job_queue: Queue[Job] = Queue()
 
+def is_obs_related_job(job_type: JobType) -> bool:
+    """Check if a job type involves OBS websocket operations."""
+    obs_job_types = {JobType.TOGGLE_OBS_SRC, JobType.RESTART_MEDIA_SOURCE}
+    return job_type in obs_job_types
+
+def wait_for_obs_job_delay():
+    """Ensure minimum delay between OBS jobs to prevent crashes."""
+    global last_obs_job_time
+    current_time = time.time()
+    time_since_last_obs_job = current_time - last_obs_job_time
+    
+    if time_since_last_obs_job < OBS_JOB_DELAY:
+        sleep_time = OBS_JOB_DELAY - time_since_last_obs_job
+        logger.debug(f"Waiting {sleep_time:.2f}s before next OBS job to prevent crashes")
+        time.sleep(sleep_time)
+    
+    last_obs_job_time = time.time()
+
 def dispatch(job: Job):
     """Calls the appropriate function based on the job type."""
     logger.info(f"Dispatching job: {job.type.name} with payload: {job.payload}")
+    
+    # Add delay before OBS-related jobs to prevent crashes
+    if is_obs_related_job(job.type):
+        wait_for_obs_job_delay()
+    
     try:
         if job.type == JobType.START_STREAM:
             # Actual logic for starting stream side-effects

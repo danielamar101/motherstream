@@ -34,6 +34,26 @@ class OBSSocketManager():
         logger.debug("Connecting to websocket...")
         self.__connect()
 
+        # Connection health monitoring
+        self._connection_healthy = False
+        self._last_health_check = 0
+        self._health_check_interval = 30  # Check every 30 seconds
+        self._reconnect_attempts = 0
+        self._max_reconnect_attempts = 5
+        self._reconnect_delay = 5  # Start with 5 second delay
+        
+        # Streaming monitoring and auto-start
+        self._streaming_monitor_enabled = False  # Disabled by default
+        self._is_streaming = False
+        self._last_streaming_check = 0
+        self._streaming_check_interval = 15  # Check streaming status every 15 seconds
+        self._auto_start_attempts = 0
+        self._max_auto_start_attempts = 3
+        self._auto_start_delay = 10  # Wait 10 seconds between auto-start attempts
+        
+        # Start health monitoring thread
+        self._start_health_monitor()
+
         # TODO: Evaluate if we want this websocket usage - This used stream_queue
         # self.start_loading_message_thread()
 
@@ -43,19 +63,243 @@ class OBSSocketManager():
         try:
             self.obs_websocket.connect()
             logger.info("Connected to obs websocket.")
+            self._connection_healthy = True
+            self._reconnect_attempts = 0  # Reset on successful connection
+            self._reconnect_delay = 5     # Reset delay
         except Exception as e:
-            logger.error(e)
+            logger.error(f"Failed to connect to OBS websocket: {e}")
+            self._connection_healthy = False
 
     def disconnect(self):
         try:
             self.obs_websocket.disconnect()
             logger.info("Disconnected from obs websocket.")
+            self._connection_healthy = False
         except Exception as e:
             logger.error(e)
+
+    def _start_health_monitor(self):
+        """Start the health monitoring thread."""
+        health_thread = threading.Thread(target=self._health_monitor_loop, daemon=True, name="OBSHealthMonitor")
+        health_thread.start()
+        logger.info("OBS health monitor thread started")
+
+    def _health_monitor_loop(self):
+        """Continuously monitor OBS connection health and streaming status."""
+        while True:
+            try:
+                current_time = time.time()
+                
+                # Regular health check
+                if current_time - self._last_health_check >= self._health_check_interval:
+                    self._check_connection_health()
+                    self._last_health_check = current_time
+                
+                # Streaming status check (if enabled)
+                if (self._streaming_monitor_enabled and 
+                    current_time - self._last_streaming_check >= self._streaming_check_interval):
+                    self._check_streaming_status()
+                    self._last_streaming_check = current_time
+                
+                time.sleep(5)  # Check every 5 seconds, but only do health check based on interval
+            except Exception as e:
+                logger.error(f"Error in health monitor loop: {e}", exc_info=True)
+                time.sleep(10)  # Wait longer on error
+
+    def _check_connection_health(self):
+        """Check if the OBS connection is healthy by making a simple request."""
+        try:
+            with obs_lock:
+                # Try a simple request to check if connection is alive
+                version_request = requests.GetVersion()
+                response = self.obs_websocket.call(version_request)
+                
+                if response and hasattr(response, 'datain'):
+                    self._connection_healthy = True
+                    logger.debug("OBS connection health check passed")
+                else:
+                    logger.warning("OBS health check returned unexpected response")
+                    self._connection_healthy = False
+                    
+        except WebSocketConnectionClosedException:
+            logger.warning("OBS health check failed: WebSocket connection closed")
+            self._connection_healthy = False
+            self._attempt_reconnect()
+        except Exception as e:
+            logger.warning(f"OBS health check failed: {e}")
+            self._connection_healthy = False
+            self._attempt_reconnect()
+
+    def _check_streaming_status(self):
+        """Check if OBS is currently streaming and auto-start if needed."""
+        if not self._connection_healthy:
+            logger.debug("Skipping streaming check - connection not healthy")
+            return
+            
+        try:
+            with obs_lock:
+                # Get streaming status
+                stream_status_request = requests.GetStreamStatus()
+                response = self.obs_websocket.call(stream_status_request)
+                
+                if response and hasattr(response, 'datain'):
+                    self._is_streaming = response.datain.get('outputActive', False)
+                    
+                    if self._is_streaming:
+                        logger.debug("OBS streaming status check: Currently streaming")
+                        # Reset auto-start attempts when streaming is active
+                        self._auto_start_attempts = 0
+                    else:
+                        logger.info("OBS streaming status check: Not streaming - attempting to start")
+                        self._attempt_auto_start_streaming()
+                else:
+                    logger.warning("Failed to get streaming status from OBS")
+                    
+        except Exception as e:
+            logger.error(f"Error checking streaming status: {e}")
+            self._connection_healthy = False
+
+    def _attempt_auto_start_streaming(self):
+        """Attempt to automatically start streaming in OBS."""
+        if self._auto_start_attempts >= self._max_auto_start_attempts:
+            logger.warning(f"Max auto-start attempts ({self._max_auto_start_attempts}) reached. Stopping auto-start attempts.")
+            return
+
+        self._auto_start_attempts += 1
+        logger.info(f"Attempting to auto-start OBS streaming (attempt {self._auto_start_attempts}/{self._max_auto_start_attempts})")
+        
+        try:
+            with obs_lock:
+                # Wait before attempting to start streaming
+                if self._auto_start_attempts > 1:
+                    logger.info(f"Waiting {self._auto_start_delay} seconds before auto-start attempt")
+                    time.sleep(self._auto_start_delay)
+                
+                # Start streaming
+                start_stream_request = requests.StartStream()
+                response = self.obs_websocket.call(start_stream_request)
+                
+                logger.info(f"Auto-start streaming command sent to OBS")
+                logger.debug(f"Start stream response: {response.datain if hasattr(response, 'datain') else 'No response data'}")
+                
+                # Give OBS a moment to start streaming, then check status
+                time.sleep(2)
+                
+                # Verify streaming started
+                stream_status_request = requests.GetStreamStatus()
+                status_response = self.obs_websocket.call(stream_status_request)
+                
+                if status_response and hasattr(status_response, 'datain'):
+                    is_now_streaming = status_response.datain.get('outputActive', False)
+                    if is_now_streaming:
+                        logger.info("Successfully auto-started OBS streaming")
+                        self._is_streaming = True
+                        self._auto_start_attempts = 0  # Reset on success
+                    else:
+                        logger.warning("Auto-start command sent but OBS is still not streaming")
+                        
+        except Exception as e:
+            logger.error(f"Failed to auto-start streaming (attempt {self._auto_start_attempts}): {e}")
+
+    def enable_streaming_monitor(self, enabled: bool = True):
+        """Enable or disable streaming monitoring and auto-start."""
+        self._streaming_monitor_enabled = enabled
+        if enabled:
+            logger.info("OBS streaming monitoring and auto-start enabled")
+            # Reset attempts when enabling
+            self._auto_start_attempts = 0
+        else:
+            logger.info("OBS streaming monitoring and auto-start disabled")
+
+    def is_streaming_monitor_enabled(self):
+        """Check if streaming monitoring is enabled."""
+        return self._streaming_monitor_enabled
+
+    def get_streaming_status(self):
+        """Get current streaming status information."""
+        return {
+            "monitor_enabled": self._streaming_monitor_enabled,
+            "is_streaming": self._is_streaming,
+            "auto_start_attempts": self._auto_start_attempts,
+            "max_auto_start_attempts": self._max_auto_start_attempts,
+            "streaming_check_interval": self._streaming_check_interval
+        }
+
+    def force_start_streaming(self):
+        """Manually force start streaming (bypasses attempt limits)."""
+        logger.info("Manually forcing OBS to start streaming")
+        try:
+            with obs_lock:
+                start_stream_request = requests.StartStream()
+                response = self.obs_websocket.call(start_stream_request)
+                
+                logger.info("Manual start streaming command sent to OBS")
+                logger.debug(f"Start stream response: {response.datain if hasattr(response, 'datain') else 'No response data'}")
+                
+                # Give OBS a moment to start streaming, then check status
+                time.sleep(2)
+                
+                # Verify streaming started
+                stream_status_request = requests.GetStreamStatus()
+                status_response = self.obs_websocket.call(stream_status_request)
+                
+                if status_response and hasattr(status_response, 'datain'):
+                    is_now_streaming = status_response.datain.get('outputActive', False)
+                    self._is_streaming = is_now_streaming
+                    return is_now_streaming
+                    
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to manually start streaming: {e}")
+            return False
+
+    def _attempt_reconnect(self):
+        """Attempt to reconnect to OBS with exponential backoff."""
+        if self._reconnect_attempts >= self._max_reconnect_attempts:
+            logger.error(f"Max reconnection attempts ({self._max_reconnect_attempts}) reached. Giving up.")
+            return
+
+        self._reconnect_attempts += 1
+        logger.info(f"Attempting to reconnect to OBS (attempt {self._reconnect_attempts}/{self._max_reconnect_attempts})")
+        
+        try:
+            # Wait before attempting reconnection (exponential backoff)
+            wait_time = min(self._reconnect_delay * (2 ** (self._reconnect_attempts - 1)), 60)
+            logger.info(f"Waiting {wait_time} seconds before reconnection attempt")
+            time.sleep(wait_time)
+            
+            # Create new websocket instance and connect
+            self.obs_websocket = obsws(self.OBS_HOST, self.OBS_PORT, self.OBS_PASSWORD)
+            self.__connect()
+            
+            if self._connection_healthy:
+                logger.info("Successfully reconnected to OBS")
+            else:
+                logger.warning("Reconnection attempt failed")
+                
+        except Exception as e:
+            logger.error(f"Reconnection attempt {self._reconnect_attempts} failed: {e}")
+            self._connection_healthy = False
+
+    def is_connection_healthy(self):
+        """Check if the OBS connection is currently healthy."""
+        return self._connection_healthy
+
+    def ensure_connection(self):
+        """Ensure connection is healthy before making requests."""
+        if not self._connection_healthy:
+            logger.warning("OBS connection is not healthy, attempting immediate reconnect")
+            self._attempt_reconnect()
+            
+        if not self._connection_healthy:
+            raise Exception("OBS connection is not available")
 
     def is_source_visible(self, source_name, scene_name):
         logger.debug(f"Checking visibility for {scene_name}:{source_name}...")
         try:
+            self.ensure_connection()
+            
             # 1. Get scene item list for the scene
             scene_item_list = self.obs_websocket.call(requests.GetSceneItemList(sceneName=scene_name))
 
@@ -77,12 +321,15 @@ class OBSSocketManager():
             return is_visible
         except Exception as e:
             logger.error(f"Exception while checking source visibility: {e}")
+            self._connection_healthy = False
             return False
 
     def toggle_obs_source(self,source_name, scene_name, toggle_timespan, only_off=False):
 
         with obs_lock:
             try:
+                self.ensure_connection()
+                
                 # 1. Get scene item list from scene
                 scene_item_list = self.obs_websocket.call(requests.GetSceneItemList(sceneName=scene_name))
         
@@ -109,26 +356,15 @@ class OBSSocketManager():
             except WebSocketConnectionClosedException as e:
                 logger.error("WebSocket is closed. Is the OBS app open?")
                 logger.error("Attempting to restart connection to the websocket...")
-                self.obs_websocket = obsws(self.OBS_HOST, self.OBS_PORT, self.OBS_PASSWORD)
-                self.__connect()
+                self._connection_healthy = False
+                self._attempt_reconnect()
                 time.sleep(2)
             except Exception as e:
                 logger.error(f"Exception with OBS WebSocket: {e}")
-                self.obs_websocket = obsws(self.OBS_HOST, self.OBS_PORT, self.OBS_PASSWORD)
-                self.__connect()
+                self._connection_healthy = False
+                self._attempt_reconnect()
                 time.sleep(2)
     
-    def toggle_timer_source(self, only_off=False):
-        source_name = 'TIMER1'
-        time_remaining_text = 'TIME REMAINING'
-        scene_name = 'MOTHERSTREAM'
-
-        try:
-            self.toggle_obs_source(source_name=source_name, scene_name=scene_name, toggle_timespan=1, only_off=only_off)
-            self.toggle_obs_source(source_name=time_remaining_text, scene_name=scene_name, toggle_timespan=1, only_off=only_off)
-        except Exception as e:
-            logger.error(f"Error toggling off {scene_name}:{source_name}. {e}")
-
     def restart_media_source(self, input_name: str):
         """Sends a request to OBS to restart a specific media source."""
         # Try different action strings based on OBS WebSocket version
@@ -142,6 +378,8 @@ class OBSSocketManager():
         
         with obs_lock: 
             try:
+                self.ensure_connection()
+                
                 # First, let's try to get the media input status to see if it exists
                 try:
                     status_request = requests.GetMediaInputStatus(inputName=input_name)
@@ -173,12 +411,14 @@ class OBSSocketManager():
                 logger.error(f"Failed to restart media source {input_name}: WebSocket is closed. Is OBS running?")
                 # Attempt to reconnect
                 logger.info("Attempting to reconnect to OBS WebSocket...")
-                self.__connect()
+                self._connection_healthy = False
+                self._attempt_reconnect()
                 return False
             except Exception as e:
                 logger.error(f"An error occurred while trying to restart media source {input_name}: {e}", exc_info=True)
                 # Consider if reconnection is needed here too
-                self.__connect()
+                self._connection_healthy = False
+                self._attempt_reconnect()
                 return False
 
     def get_media_input_status(self, input_name: str):
@@ -186,12 +426,14 @@ class OBSSocketManager():
         logger.info(f"Getting status for media input: {input_name}")
         with obs_lock:
             try:
+                self.ensure_connection()
                 request = requests.GetMediaInputStatus(inputName=input_name)
                 response = self.obs_websocket.call(request)
                 logger.info(f"Media input '{input_name}' status: {response.datain}")
                 return response.datain
             except Exception as e:
                 logger.error(f"Failed to get media input status for {input_name}: {e}")
+                self._connection_healthy = False
                 return None
 
     def list_inputs(self):
@@ -199,6 +441,7 @@ class OBSSocketManager():
         logger.info("Getting list of all inputs...")
         with obs_lock:
             try:
+                self.ensure_connection()
                 request = requests.GetInputList()
                 response = self.obs_websocket.call(request)
                 inputs = response.datain.get('inputs', [])
@@ -208,6 +451,7 @@ class OBSSocketManager():
                 return inputs
             except Exception as e:
                 logger.error(f"Failed to get input list: {e}")
+                self._connection_healthy = False
                 return []
 
 # Create a global instance
