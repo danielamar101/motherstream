@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from app.api.discord import send_discord_message
 from app.core.srs_stream_manager import async_record_stream, drop_stream_publisher
+from app.core.stream_health_checker import StreamHealthChecker
 # Import the global OBS instance
 from app.obs import obs_socket_manager_instance
 
@@ -28,6 +29,7 @@ class JobType(Enum):
     SEND_DISCORD_MESSAGE = "send_discord_message" 
     RESTART_MEDIA_SOURCE = "restart_media_source"
     FLASH_LOADING_MESSAGE = "flash_loading_message"
+    CHECK_STREAM_HEALTH = "check_stream_health"
 
 @dataclass
 class Job:
@@ -56,8 +58,11 @@ def wait_for_obs_job_delay():
 
 def dispatch(job: Job):
     """Calls the appropriate function based on the job type."""
-    logger.info(f"Dispatching job: {job.type.name} with payload: {job.payload}")
-    
+    if job.type not in [JobType.CHECK_STREAM_HEALTH]:
+        logger.info(f"Dispatching job: {job.type.name} with payload: {job.payload}")
+    else:
+        logger.debug(f"Dispatching job: {job.type.name}")
+        
     # Add delay before OBS-related jobs to prevent crashes
     if is_obs_related_job(job.type):
         wait_for_obs_job_delay()
@@ -154,6 +159,23 @@ def dispatch(job: Job):
                 toggle_timespan=toggle_timespan,
                 only_off=only_off
             )
+
+        elif job.type == JobType.CHECK_STREAM_HEALTH:
+            # Check stream health using the health checker
+            stream_url = job.payload.get("stream_url")
+            health_checker = job.payload.get("health_checker")
+            
+            if stream_url and health_checker:
+                logger.debug(f"Checking health for stream: {stream_url}")
+                is_healthy = health_checker.check_stream_health()
+                
+                if not is_healthy:
+                    unhealthy_duration = health_checker.get_unhealthy_duration()
+                    logger.warning(f"Stream {stream_url} unhealthy for {unhealthy_duration:.1f}s")
+                else:
+                    logger.debug(f"Stream {stream_url} is healthy")
+            else:
+                logger.warning("CHECK_STREAM_HEALTH job missing 'stream_url' or 'health_checker' in payload")
 
         else:
             # Consider logging an error or raising for unhandled job types

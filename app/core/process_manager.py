@@ -14,6 +14,7 @@ from ..obs import obs_socket_manager_instance
 # from app.api.discord import send_discord_message
 from .srs_stream_manager import get_stream_state # Keep if needed elsewhere
 from app.api.shazam import SongRecognizer
+from .stream_health_checker import StreamHealthChecker
 
 # Import job queue functions
 from app.core.worker import add_job, JobType
@@ -51,6 +52,12 @@ class StreamManager(metaclass=Singleton):
         # Loading message thread control
         self.loading_message_stop_event = threading.Event()
         self.loading_message_thread = None
+        
+        # Stream health monitoring
+        self.stream_health_checker = StreamHealthChecker(
+            stream_url="rtmp://127.0.0.1:1935/motherstream/live",
+            unhealthy_threshold_seconds=30
+        )
 
     def set_song_data(self,song_data):
         self.song_data = song_data
@@ -67,6 +74,9 @@ class StreamManager(metaclass=Singleton):
         self.set_priority_key(None)
         self.current_dj_name = dj_name
         self.time_manager = TimeManager()
+        
+        # Reset stream health checker for new stream
+        self.stream_health_checker.reset()
         
         add_job(JobType.START_STREAM, payload={"stream_key": stream_key, "dj_name": dj_name})
         logger.info(f"Enqueued START_STREAM job for DJ: {dj_name} with key: {stream_key}")
@@ -112,6 +122,9 @@ class StreamManager(metaclass=Singleton):
         self.time_manager = None # Reset timer since the stream ended
         logger.debug(f"Updated internal state: last_stream_key={old_streamer.stream_key}, time_manager reset.")
 
+        # Reset stream health checker when switching streams
+        self.stream_health_checker.reset()
+
         # 2. Get the next streamer (if any)
         current_streamer = self.stream_queue.current_streamer()
         if current_streamer:
@@ -136,6 +149,28 @@ class StreamManager(metaclass=Singleton):
             logger.debug("Enqueued TOGGLE_OBS_SRC job (timer off)")
 
         logger.info("Stream switch processing complete (jobs enqueued).")
+
+    def handle_unhealthy_stream(self):
+        """Handle when the output stream has been unhealthy for too long."""
+        current_streamer = self.stream_queue.current_streamer()
+        if current_streamer:
+            unhealthy_duration = self.stream_health_checker.get_unhealthy_duration()
+            logger.error(f"Output stream unhealthy for {unhealthy_duration:.1f}s. Dropping publisher for {current_streamer.dj_name} ({current_streamer.stream_key})")
+            
+            # Send Discord notification about the issue
+            add_job(JobType.SEND_DISCORD_MESSAGE, payload={
+                "message": f"⚠️ Stream health issue detected. Dropping {current_streamer.dj_name} due to unhealthy output stream (unhealthy for {unhealthy_duration:.1f}s)."
+            })
+            
+            logger.debug("Switching stream due to unhealthy stream")
+            self.switch_stream()
+
+            # Reset the health checker
+            self.stream_health_checker.reset()
+        else:
+            logger.warning("Output stream unhealthy but no current streamer found")
+            # Reset the health checker anyway
+            self.stream_health_checker.reset()
 
     def delete_last_streamer_key(self):
         self.last_stream_key = None
@@ -208,6 +243,9 @@ class StreamManager(metaclass=Singleton):
         
         self.loading_message_thread = None
 
+        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "LOADING", "only_off": True, "toggle_timespan": 1})
+        logger.debug("Enqueued TOGGLE_OBS_SRC job (loading off)")
+
     # Background thread to manage the stream queue
     def process_queue(self):
         # for init
@@ -216,7 +254,7 @@ class StreamManager(metaclass=Singleton):
         if current_streamer:
             # update state variables at startup.
             logger.info(f"Starting stream from persistent state...: {current_streamer.dj_name}")
-            self.start_loading_message_thread()
+            # self.start_loading_message_thread()
             self.start_stream(current_streamer) 
             logger.info("Done")
         while True:
@@ -228,6 +266,19 @@ class StreamManager(metaclass=Singleton):
                 add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True, "toggle_timespan": 1})
                 self.stop_loading_message_thread()
                 logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer off)")
+                # Reset health checker when no stream is active
+                self.stream_health_checker.reset()
+            else:
+                # Check stream health when there's an active stream
+                add_job(JobType.CHECK_STREAM_HEALTH, payload={
+                    "stream_url": self.stream_health_checker.stream_url,
+                    "health_checker": self.stream_health_checker
+                })
+                
+                # Check if stream has been unhealthy for too long
+                if self.stream_health_checker.is_unhealthy_for_threshold():
+                    self.handle_unhealthy_stream()
+            
             # oryx_state = get_stream_state()
             
             if self.time_manager and self.time_manager.has_swap_interval_elapsed():
