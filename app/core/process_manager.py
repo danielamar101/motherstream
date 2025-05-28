@@ -298,6 +298,3 @@ class StreamManager(metaclass=Singleton):
                     if song_recognizer.song_data != self.current_song_data:
                         self.current_song_data = song_recognizer.song_data
                         print(self.current_song_data)
-    
-
-
