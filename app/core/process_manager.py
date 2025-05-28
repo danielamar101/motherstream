@@ -47,6 +47,10 @@ class StreamManager(metaclass=Singleton):
         self.stream_queue = stream_queue
         # No longer need to instantiate OBSSocketManager here
         # self.obs_socket_manager = OBSSocketManager(stream_queue)
+        
+        # Loading message thread control
+        self.loading_message_stop_event = threading.Event()
+        self.loading_message_thread = None
 
     def set_song_data(self,song_data):
         self.song_data = song_data
@@ -68,7 +72,10 @@ class StreamManager(metaclass=Singleton):
         logger.info(f"Enqueued START_STREAM job for DJ: {dj_name} with key: {stream_key}")
 
         add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": False, "toggle_timespan": 5})
-        logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer off)")
+        logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer on)")
+
+        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "timer", "only_off": False})
+        logger.debug("Enqueued TOGGLE_OBS_SRC job (timer on)")
 
         # Enqueue job to restart the GStreamer media source
         add_job(JobType.RESTART_MEDIA_SOURCE, payload={"source_name": "GMOTHERSTREAM"})
@@ -85,9 +92,6 @@ class StreamManager(metaclass=Singleton):
 
         logger.debug(f"Switching away from: {old_streamer.dj_name} ({old_streamer.stream_key})")
 
-        # Enqueue jobs for the old streamer teardown
-        # self.obs_socket_manager.toggle_gstreamer_source(only_off=False)
-        # Let's enqueue a job to turn gstreamer source OFF as part of teardown
         add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True, "toggle_timespan": 5})
         logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer off)")
 
@@ -125,9 +129,9 @@ class StreamManager(metaclass=Singleton):
             logger.debug(f"Set priority key to {current_streamer.stream_key}")
         else:
             logger.info("No next streamer in queue.")
-            # No new streamer, clear priority key (Internal state)
+
             self.set_priority_key(None)
-            # Maybe turn off other OBS sources? e.g., timer? Enqueue job.
+
             add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "timer", "only_off": True})
             logger.debug("Enqueued TOGGLE_OBS_SRC job (timer off)")
 
@@ -155,8 +159,54 @@ class StreamManager(metaclass=Singleton):
     def modify_swap_time(self,time, reset_time=False):
         self.time_manager.modify_swap_interval(interval=time,reset_time=reset_time)
     
+    def flash_loading_message_loop(self):
+        """Background loop to flash loading message when DJs are in queue."""
+        logger.info("Loading message flash thread started.")
+        while not self.loading_message_stop_event.is_set():
+            try:
+                if self.stream_queue.get_dj_name_queue_list():
+                    logger.debug("TOGGLING NEXT STREAM IS LOADING MSG...")
+                    add_job(JobType.FLASH_LOADING_MESSAGE, payload={"only_off": False})
+                # Sleep to control flash frequency - adjust as needed
+                # Use wait() instead of sleep() to allow immediate response to stop event
+                if self.loading_message_stop_event.wait(timeout=2):  # Flash every 2 seconds when DJs are queued
+                    break  # Stop event was set
+            except Exception as e:
+                logger.error(f"Error in loading message flash loop: {e}", exc_info=True)
+                if self.loading_message_stop_event.wait(timeout=1):  # Brief pause before retrying
+                    break
+        logger.info("Loading message flash thread stopped.")
 
+    def start_loading_message_thread(self):
+        """Start the background thread for flashing loading messages."""
+        # Stop any existing thread first
+        self.stop_loading_message_thread()
+        
+        logger.info("Starting loading message toggle thread...")
+        self.loading_message_stop_event.clear()  # Reset the stop event
+        self.loading_message_thread = threading.Thread(
+            target=self.flash_loading_message_loop, 
+            daemon=True, 
+            name="LoadingMessageThread"
+        )
+        self.loading_message_thread.start()
+        logger.info("Loading message thread initialized and dispatched.")
 
+    def stop_loading_message_thread(self):
+        """Stop the loading message flash thread gracefully."""
+        if self.loading_message_thread and self.loading_message_thread.is_alive():
+            logger.info("Stopping loading message thread...")
+            self.loading_message_stop_event.set()  # Signal the thread to stop
+            self.loading_message_thread.join(timeout=5)  # Wait up to 5 seconds for clean shutdown
+            
+            if self.loading_message_thread.is_alive():
+                logger.warning("Loading message thread did not stop within timeout")
+            else:
+                logger.info("Loading message thread stopped successfully")
+        else:
+            logger.debug("Loading message thread is not running")
+        
+        self.loading_message_thread = None
 
     # Background thread to manage the stream queue
     def process_queue(self):
@@ -166,6 +216,7 @@ class StreamManager(metaclass=Singleton):
         if current_streamer:
             # update state variables at startup.
             logger.info(f"Starting stream from persistent state...: {current_streamer.dj_name}")
+            self.start_loading_message_thread()
             self.start_stream(current_streamer) 
             logger.info("Done")
         while True:
@@ -175,6 +226,7 @@ class StreamManager(metaclass=Singleton):
             logger.info(f'Lead Stream: {lead_stream}, Last Stream: {self.get_last_streamer_key()} State: {motherstream_state} PRIORITY: {self.priority_key} BLOCKING: {self.is_blocking_last_streamer}')
             if not lead_stream:
                 add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True, "toggle_timespan": 1})
+                self.stop_loading_message_thread()
                 logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer off)")
             # oryx_state = get_stream_state()
             

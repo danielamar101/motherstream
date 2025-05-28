@@ -27,6 +27,7 @@ class JobType(Enum):
     STOP_RECORDING   = "stop_recording" 
     SEND_DISCORD_MESSAGE = "send_discord_message" 
     RESTART_MEDIA_SOURCE = "restart_media_source"
+    FLASH_LOADING_MESSAGE = "flash_loading_message"
 
 @dataclass
 class Job:
@@ -37,7 +38,7 @@ job_queue: Queue[Job] = Queue()
 
 def is_obs_related_job(job_type: JobType) -> bool:
     """Check if a job type involves OBS websocket operations."""
-    obs_job_types = {JobType.TOGGLE_OBS_SRC, JobType.RESTART_MEDIA_SOURCE}
+    obs_job_types = {JobType.TOGGLE_OBS_SRC, JobType.RESTART_MEDIA_SOURCE, JobType.FLASH_LOADING_MESSAGE}
     return job_type in obs_job_types
 
 def wait_for_obs_job_delay():
@@ -139,6 +140,20 @@ def dispatch(job: Job):
                 logger.info(f"Successfully triggered restart for media source: {source_name}")
             else:
                  logger.warning("RESTART_MEDIA_SOURCE job missing 'source_name' in payload")
+
+        elif job.type == JobType.FLASH_LOADING_MESSAGE:
+            # Flash the loading message - equivalent to toggle_loading_message_source
+            scene_name = job.payload.get("scene_name", "MOTHERSTREAM")  # Default scene
+            only_off = job.payload.get("only_off", False)
+            toggle_timespan = job.payload.get("toggle_timespan", 1.5)  # Default timespan from original code
+            
+            logger.debug("Flashing loading message...")
+            obs_socket_manager_instance.toggle_obs_source(
+                source_name="LOADING",
+                scene_name=scene_name,
+                toggle_timespan=toggle_timespan,
+                only_off=only_off
+            )
 
         else:
             # Consider logging an error or raising for unhandled job types
