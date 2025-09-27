@@ -1,0 +1,179 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: motherstream-ingress
+  namespace: motherstream
+  annotations:
+    # Strict SSL settings for production
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    
+    # Enhanced security for production
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+      add_header X-Frame-Options "DENY" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-XSS-Protection "1; mode=block" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+      add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' wss: https:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self';" always;
+      
+    # Production timeouts
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "1800"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "1800"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    
+    # Production rate limiting
+    nginx.ingress.kubernetes.io/rate-limit: "50"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    nginx.ingress.kubernetes.io/rate-limit-connections: "10"
+    
+    # Enable monitoring
+    nginx.ingress.kubernetes.io/enable-access-log: "true"
+    nginx.ingress.kubernetes.io/enable-rewrite-log: "true"
+    
+spec:
+  rules:
+  # Production motherstream.live domain
+  - host: motherstream.live
+    http:
+      paths:
+      # Backend API routes
+      - path: /backend
+        pathType: Prefix
+        backend:
+          service:
+            name: prod-motherstream
+            port:
+              number: 8483
+      
+      # Statistics endpoint  
+      - path: /stat
+        pathType: Prefix
+        backend:
+          service:
+            name: prod-nginx-rtmp
+            port:
+              number: 8989
+      
+      # HLS streaming
+      - path: /hls
+        pathType: Prefix
+        backend:
+          service:
+            name: prod-nginx-rtmp
+            port:
+              number: 80
+      
+      # Frontend (catch-all)
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prod-frontend
+            port:
+              number: 5173
+  
+  # Production always12.live domain  
+  - host: always12.live
+    http:
+      paths:
+      # Specific API endpoints with production service names
+      - path: /queue-json
+        pathType: Exact
+        backend:
+          service:
+            name: prod-motherstream
+            port:
+              number: 8483
+              
+      - path: /queue-list
+        pathType: Exact
+        backend:
+          service:
+            name: prod-motherstream
+            port:
+              number: 8483
+              
+      - path: /timer-page
+        pathType: Exact
+        backend:
+          service:
+            name: prod-motherstream
+            port:
+              number: 8483
+              
+      - path: /timer-data
+        pathType: Exact
+        backend:
+          service:
+            name: prod-motherstream
+            port:
+              number: 8483
+              
+      - path: /time-settings
+        pathType: Exact
+        backend:
+          service:
+            name: prod-motherstream
+            port:
+              number: 8483
+              
+      - path: /block-toggle
+        pathType: Exact
+        backend:
+          service:
+            name: prod-motherstream
+            port:
+              number: 8483
+              
+      - path: /song-json
+        pathType: Exact
+        backend:
+          service:
+            name: prod-motherstream
+            port:
+              number: 8483
+              
+      - path: /song-details
+        pathType: Exact
+        backend:
+          service:
+            name: prod-motherstream
+            port:
+              number: 8483
+              
+      # Statistics endpoint
+      - path: /stat
+        pathType: Prefix
+        backend:
+          service:
+            name: prod-nginx-rtmp
+            port:
+              number: 8989
+      
+      # HLS streaming
+      - path: /hls
+        pathType: Prefix
+        backend:
+          service:
+            name: prod-nginx-rtmp
+            port:
+              number: 80
+      
+      # Local static files
+      - path: /local
+        pathType: Prefix
+        backend:
+          service:
+            name: prod-nginx-rtmp
+            port:
+              number: 80
+      
+      # Default backend API (catch-all)
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prod-motherstream
+            port:
+              number: 8483 

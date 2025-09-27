@@ -1,0 +1,109 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: motherstream
+  namespace: motherstream
+spec:
+  type: NodePort
+  ports:
+  - port: 8483
+    targetPort: 8483
+    nodePort: 30483
+    protocol: TCP
+    name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: motherstream
+spec:
+  type: NodePort
+  ports:
+  - port: 5173
+    targetPort: 5173
+    nodePort: 30173
+    protocol: TCP
+    name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger
+  namespace: motherstream
+spec:
+  type: NodePort
+  ports:
+  - port: 16686
+    targetPort: 16686
+    nodePort: 30686
+    protocol: TCP
+    name: ui
+  - port: 4317
+    targetPort: 4317
+    nodePort: 30317
+    protocol: TCP
+    name: otlp-grpc
+  - port: 9411
+    targetPort: 9411
+    nodePort: 30411
+    protocol: TCP
+    name: zipkin
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-rtmp
+  namespace: motherstream
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 80
+    nodePort: 30080
+    protocol: TCP
+    name: http
+  - port: 443
+    targetPort: 443
+    nodePort: 30443
+    protocol: TCP
+    name: https
+  - port: 1936
+    targetPort: 1936
+    nodePort: 31936
+    protocol: TCP
+    name: rtmp
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oryx
+  namespace: motherstream
+spec:
+  type: NodePort
+  ports:
+  - port: 2022
+    targetPort: 2022
+    nodePort: 32022
+    protocol: TCP
+    name: ssh
+  - port: 1935
+    targetPort: 1935
+    nodePort: 31935
+    protocol: TCP
+    name: rtmp
+  - port: 8080
+    targetPort: 8080
+    nodePort: 30800
+    protocol: TCP
+    name: http
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30000
+    protocol: UDP
+    name: webrtc-udp
+  - port: 10800
+    targetPort: 10800
+    nodePort: 30810
+    protocol: UDP
+    name: srt-udp 

@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: motherstream
+  namespace: motherstream
+  labels:
+    app: motherstream
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: motherstream
+  template:
+    metadata:
+      labels:
+        app: motherstream
+    spec:
+      containers:
+      - name: motherstream
+        image: 192.168.49.1:5000/motherstream:latest
+        ports:
+        - containerPort: 8483
+          name: http
+        envFrom:
+        - secretRef:
+            name: motherstream-secrets
+        - configMapRef:
+            name: motherstream-config
+        volumeMounts:
+        - name: stream-recordings
+          mountPath: /var/www/streams/stream-recordings
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "400m"
+        livenessProbe:
+          httpGet:
+            path: /health-check/
+            port: 8483
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health-check/
+            port: 8483
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: stream-recordings
+        persistentVolumeClaim:
+          claimName: stream-recordings-pvc
+      initContainers:
+      - name: wait-for-postgres
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nslookup postgres; do echo waiting for postgres; sleep 2; done;']
+      - name: wait-for-jaeger
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nslookup jaeger; do echo waiting for jaeger; sleep 2; done;']
+      - name: wait-for-oryx
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nslookup oryx; do echo waiting for oryx; sleep 2; done;']
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: motherstream
+  namespace: motherstream
+  labels:
+    app: motherstream
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8483
+    targetPort: 8483
+    protocol: TCP
+    name: http
+  selector:
+    app: motherstream 

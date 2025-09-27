@@ -1,0 +1,127 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tailscale-auth
+  namespace: motherstream
+type: Opaque
+stringData:
+  # Get this from: https://login.tailscale.com/admin/settings/keys
+  # Create an auth key with ephemeral=true and reusable=true
+  TS_AUTHKEY: "tskey-auth-kekGixjgSD11CNTRL-TTx7G6vq9CMDoE8giQPJCMit9rAcEjP21"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tailscale-config
+  namespace: motherstream
+data:
+  TS_USERSPACE: "true"
+  TS_STATE_DIR: "/var/lib/tailscale"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tailscale-gateway
+  namespace: motherstream
+  labels:
+    app: tailscale-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tailscale-gateway
+  template:
+    metadata:
+      labels:
+        app: tailscale-gateway
+    spec:
+      serviceAccountName: tailscale
+      containers:
+      - name: tailscale
+        image: tailscale/tailscale:latest
+        imagePullPolicy: Always
+        env:
+        - name: TS_AUTHKEY
+          valueFrom:
+            secretKeyRef:
+              name: tailscale-auth
+              key: TS_AUTHKEY
+        - name: TS_USERSPACE
+          valueFrom:
+            configMapKeyRef:
+              name: tailscale-config
+              key: TS_USERSPACE
+        - name: TS_STATE_DIR
+          valueFrom:
+            configMapKeyRef:
+              name: tailscale-config
+              key: TS_STATE_DIR
+        - name: TS_HOSTNAME
+          value: "minikube-motherstream"
+        - name: TS_ROUTES
+          value: "192.168.49.0/24,10.96.0.0/12,10.244.0.0/16"
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+            - NET_RAW
+        volumeMounts:
+        - name: tailscale-state
+          mountPath: /var/lib/tailscale
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      volumes:
+      - name: tailscale-state
+        emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tailscale
+  namespace: motherstream
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: motherstream
+  name: tailscale
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["create", "get", "list", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tailscale
+  namespace: motherstream
+subjects:
+- kind: ServiceAccount
+  name: tailscale
+  namespace: motherstream
+roleRef:
+  kind: Role
+  name: tailscale
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tailscale-gateway
+  namespace: motherstream
+  labels:
+    app: tailscale-gateway
+spec:
+  type: ClusterIP
+  ports:
+  - port: 41641
+    targetPort: 41641
+    protocol: UDP
+    name: tailscale-udp
+  selector:
+    app: tailscale-gateway

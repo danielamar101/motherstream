@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oryx
+  namespace: motherstream
+  labels:
+    app: oryx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oryx
+  template:
+    metadata:
+      labels:
+        app: oryx
+    spec:
+      containers:
+      - name: oryx
+        image: ossrs/oryx:5.15.20
+        ports:
+        - containerPort: 2022
+          name: ssh
+        - containerPort: 1935
+          name: rtmp
+        - containerPort: 8080
+          name: http
+        - containerPort: 8000
+          name: webrtc-udp
+          protocol: UDP
+        - containerPort: 10800
+          name: srt-udp
+          protocol: UDP
+        volumeMounts:
+        - name: oryx-data
+          mountPath: /data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "400m"
+      volumes:
+      - name: oryx-data
+        persistentVolumeClaim:
+          claimName: oryx-data-pvc
+      initContainers:
+      - name: wait-for-nginx
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nslookup nginx-rtmp; do echo waiting for nginx-rtmp; sleep 2; done;']
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oryx
+  namespace: motherstream
+  labels:
+    app: oryx
+spec:
+  type: ClusterIP
+  ports:
+  - port: 2022
+    targetPort: 2022
+    protocol: TCP
+    name: ssh
+  - port: 1935
+    targetPort: 1935
+    protocol: TCP
+    name: rtmp
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  - port: 8000
+    targetPort: 8000
+    protocol: UDP
+    name: webrtc-udp
+  - port: 10800
+    targetPort: 10800
+    protocol: UDP
+    name: srt-udp
+  selector:
+    app: oryx 

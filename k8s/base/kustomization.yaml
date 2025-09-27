@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - postgres.yaml
+  - jaeger.yaml
+  - nginx-rtmp.yaml
+  - oryx.yaml
+  - motherstream.yaml
+  - frontend.yaml
+  - ingress.yaml
+  - rtmp-ingress.yaml
+  # certificates.yaml excluded for local development
+
+commonLabels:
+  project: motherstream
+  
+images:
+  - name: 192.168.49.1:5000/motherstream
+    newTag: latest
+  - name: 192.168.49.1:5000/frontend
+    newTag: latest
+  - name: nginx-rtmp
+    newTag: latest 

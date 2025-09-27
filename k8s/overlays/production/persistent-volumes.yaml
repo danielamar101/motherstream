@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-data-pv-production
+  namespace: motherstream
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage-production
+  hostPath:
+    path: /home/motherstream/Desktop/motherstream/production/pgdata/data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data-pvc
+  namespace: motherstream
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: local-storage-production
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: stream-recordings-pv-production
+  namespace: motherstream
+spec:
+  capacity:
+    storage: 500Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage-production
+  hostPath:
+    path: /home/motherstream/Desktop/motherstream/production/stream-recordings
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: stream-recordings-pvc
+  namespace: motherstream
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 500Gi
+  storageClassName: local-storage-production
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: oryx-data-pv-production
+  namespace: motherstream
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage-production
+  hostPath:
+    path: /home/motherstream/Desktop/motherstream/production/oryx
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: oryx-data-pvc
+  namespace: motherstream
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: local-storage-production
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: certs-pv-production
+  namespace: motherstream
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage-production
+  hostPath:
+    path: /home/motherstream/Desktop/motherstream/production/certs
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: certs-pvc
+  namespace: motherstream
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: local-storage-production 

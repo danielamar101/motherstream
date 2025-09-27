@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: motherstream
+spec:
+  template:
+    spec:
+      initContainers:
+      - name: wait-for-motherstream
+        command: ['sh', '-c', 'until nslookup staging-motherstream; do echo waiting for staging-motherstream; sleep 2; done;']
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: motherstream
+  namespace: motherstream
+spec:
+  template:
+    spec:
+      initContainers:
+      - name: wait-for-postgres
+        command: ['sh', '-c', 'until nslookup staging-postgres; do echo waiting for staging-postgres; sleep 2; done;']
+      - name: wait-for-jaeger
+        command: ['sh', '-c', 'until nslookup staging-jaeger; do echo waiting for staging-jaeger; sleep 2; done;']
+      - name: wait-for-oryx
+        command: ['sh', '-c', 'until nslookup staging-oryx; do echo waiting for staging-oryx; sleep 2; done;']
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oryx
+  namespace: motherstream
+spec:
+  template:
+    spec:
+      initContainers:
+      - name: wait-for-nginx
+        command: ['sh', '-c', 'until nslookup staging-nginx-rtmp; do echo waiting for staging-nginx-rtmp; sleep 2; done;'] 

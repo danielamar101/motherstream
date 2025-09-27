@@ -17,3 +17,4 @@ oryx/
 stream-recordings/
 pgdata/
 pg/
+**/secrets.yaml

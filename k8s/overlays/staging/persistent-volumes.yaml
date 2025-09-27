@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-data-pv-staging
+  namespace: motherstream
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage-staging
+  hostPath:
+    path: /home/motherstream/Desktop/motherstream/staging/pgdata/data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data-pvc
+  namespace: motherstream
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: local-storage-staging
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: stream-recordings-pv-staging
+  namespace: motherstream
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage-staging
+  hostPath:
+    path: /home/motherstream/Desktop/motherstream/staging/stream-recordings
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: stream-recordings-pvc
+  namespace: motherstream
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: local-storage-staging
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: oryx-data-pv-staging
+  namespace: motherstream
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage-staging
+  hostPath:
+    path: /home/motherstream/Desktop/motherstream/staging/oryx
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: oryx-data-pvc
+  namespace: motherstream
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: local-storage-staging
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: certs-pv-staging
+  namespace: motherstream
+spec:
+  capacity:
+    storage: 500Mi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage-staging
+  hostPath:
+    path: /home/motherstream/Desktop/motherstream/staging/certs
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: certs-pvc
+  namespace: motherstream
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 500Mi
+  storageClassName: local-storage-staging 

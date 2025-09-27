@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-rtmp
+  namespace: motherstream
+  labels:
+    app: nginx-rtmp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-rtmp
+  template:
+    metadata:
+      labels:
+        app: nginx-rtmp
+    spec:
+      containers:
+      - name: nginx-rtmp
+        image: nginx-rtmp:latest
+        ports:
+        - containerPort: 80
+          name: http
+        - containerPort: 443
+          name: https
+        - containerPort: 1936
+          name: rtmp
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+          readOnly: true
+        - name: nginx-config
+          mountPath: /etc/nginx/rtmp.conf
+          subPath: rtmp.conf
+          readOnly: true
+        - name: nginx-config
+          mountPath: /var/www/stat.xsl
+          subPath: stat.xsl
+          readOnly: true
+        - name: stream-recordings
+          mountPath: /var/www/streams/stream-recordings
+        - name: certs
+          mountPath: /etc/letsencrypt/
+        - name: certbot-www
+          mountPath: /var/www/certbot/
+          readOnly: true
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-config
+      - name: stream-recordings
+        persistentVolumeClaim:
+          claimName: stream-recordings-pvc
+      - name: certs
+        persistentVolumeClaim:
+          claimName: certs-pvc
+      - name: certbot-www
+        hostPath:
+          path: /home/motherstream/Desktop/motherstream/certbot/www/
+          type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-rtmp
+  namespace: motherstream
+  labels:
+    app: nginx-rtmp
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+  - port: 443
+    targetPort: 443
+    protocol: TCP
+    name: https
+  - port: 1936
+    targetPort: 1936
+    protocol: TCP
+    name: rtmp
+  selector:
+    app: nginx-rtmp 
