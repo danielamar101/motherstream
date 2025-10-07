@@ -1,0 +1,22 @@
+[Unit]
+Description=Kickoff Minikube Cluster
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=forking
+ExecStart=/usr/local/bin/minikube start --driver=docker
+ExecStop=/usr/local/bin/minikube stop
+ExecReload=/usr/local/bin/minikube status
+RemainAfterExit=true
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=300
+StandardOutput=journal
+StandardError=journal
+User=motherstream
+Group=motherstream
+Environment=HOME=/home/motherstream
+
+[Install]
+WantedBy=multi-user.target

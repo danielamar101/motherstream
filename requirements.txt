@@ -31,7 +31,7 @@ argon2-cffi==23.1.0
     # via -r requirements.in
 argon2-cffi-bindings==21.2.0
     # via argon2-cffi
-asyncio==3.4.3
+# asyncio==3.4.3 - Removed as it conflicts with Python 3.12 built-in asyncio
     # via -r requirements.in
 attrs==24.2.0
     # via aiohttp
@@ -134,7 +134,9 @@ sentry-sdk[fast-api]==2.17.0
     # via -r requirements.in
 shazamio==0.7.0
     # via -r requirements.in
-shazamio-core==1.0.7
+# shazamio-core==1.0.7 - Package appears corrupted on PyPI
+# Try installing from binary wheel or alternative version
+shazamio-core
     # via
     #   -r requirements.in
     #   shazamio

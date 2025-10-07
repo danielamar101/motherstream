@@ -1,1 +1,77 @@
+# Frontend files
 frontend/
+
+# Development and build files
+.git
+.gitignore
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.env
+.python-version
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Documentation
+*.md
+docs/
+
+# Logs and temporary files
+*.log
+.DS_Store
+Thumbs.db
+
+# Kubernetes and deployment files
+k8s/
+*.yaml
+*.yml
+!logging_config.yml
+
+# Development scripts
+setup-*.sh
+deploy-*.sh
+
+# Queue and temporary data
+QUEUE.json
+*.tmp
+k8s/
+srs/
+pg/
+pgdata/
+recordings/
+stream-recordings/
+repo/
+staging/
+certbot/
+certs/
+logs/
+images/
+oryx/
+
+# Video files
+*.flv
+*.mp4
+*.mkv
+*.avi

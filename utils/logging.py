@@ -3,7 +3,10 @@ import logging
 
 class HealthCheckFilter(logging.Filter):
     def filter(self, record):
-        return '/queue-list' not in record.getMessage()
+        message = record.getMessage()
+        # Filter out health check and frequent polling endpoints
+        excluded_routes = ['/queue-list', '/timer-data', '/queue-json']
+        return not any(route in message for route in excluded_routes)
     
 
 class FFmpegLogFilter(logging.Filter):

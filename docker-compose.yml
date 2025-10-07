@@ -41,7 +41,7 @@ services:
       - ./nginx-config/stat.xsl:/var/www/stat.xsl
       - ./stream-recordings:/var/www/streams/stream-recordings
       - ./certs/:/etc/letsencrypt/
-      - ./certbot/www/:/var/www/certbot/:ro
+      - ./certbot/www/:/var/www/certbot/
     # ports:
     #   - 1936:1936
   oryx:
