@@ -3,25 +3,25 @@ kind: Ingress
 metadata:
   name: motherstream-ingress
   namespace: motherstream
+  labels:
+    environment: staging
+    project: motherstream
   annotations:
-    # Enable SSL redirect
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # Disable SSL redirect for staging
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+    
+    # Development-friendly settings
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    
+    # Disable rate limiting for development
+    nginx.ingress.kubernetes.io/rate-limit: "1000"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
     
     # Enable HTTP/2
     nginx.ingress.kubernetes.io/http2-push-preload: "true"
-    
-    # Security headers
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      add_header Strict-Transport-Security "max-age=31536000" always;
-      add_header X-Frame-Options "SAMEORIGIN" always;
-      add_header X-Content-Type-Options "nosniff" always;
-      add_header X-XSS-Protection "1; mode=block" always;
-      
-    # WebSocket support
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
     
     # Disable buffering for streaming
     nginx.ingress.kubernetes.io/proxy-buffering: "off"
@@ -32,39 +32,26 @@ metadata:
     nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, OPTIONS"
     nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
     
-    # Rate limiting
-    nginx.ingress.kubernetes.io/rate-limit: "100"
-    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
-    
 spec:
   ingressClassName: nginx
   tls:
   - hosts:
-    - motherstream.live
-    secretName: motherstream-live-tls
+    - staging.motherstream.live
+    secretName: staging-motherstream-live-tls
   - hosts:
-    - always12.live
-    secretName: always12-live-tls
+    - staging.always12.live
+    secretName: staging-always12-live-tls
   rules:
-  # motherstream.live domain - Frontend + Backend API
-  - host: motherstream.live
+  # External staging domains (publicly accessible)
+  - host: staging.motherstream.live
     http:
       paths:
-      # Backend API routes (specific paths first)
-      - path: /backend
-        pathType: Prefix
-        backend:
-          service:
-            name: motherstream
-            port:
-              number: 8483
-      
       # Statistics endpoint
       - path: /stat
         pathType: Prefix
         backend:
           service:
-            name: nginx-rtmp
+            name: staging-nginx-rtmp
             port:
               number: 8989
       
@@ -73,29 +60,28 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: nginx-rtmp
+            name: staging-nginx-rtmp
             port:
               number: 80
       
-      # Frontend (catch-all, must be last)
+      # Frontend (catch-all)
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: frontend
+            name: staging-frontend
             port:
               number: 5173
   
-  # always12.live domain - Backend API only
-  - host: always12.live
+  - host: staging.always12.live
     http:
       paths:
-      # Specific API endpoints
+      # Specific API endpoints (matching production)
       - path: /queue-json
         pathType: Exact
         backend:
           service:
-            name: motherstream
+            name: staging-motherstream
             port:
               number: 8483
               
@@ -103,7 +89,7 @@ spec:
         pathType: Exact
         backend:
           service:
-            name: motherstream
+            name: staging-motherstream
             port:
               number: 8483
               
@@ -111,7 +97,7 @@ spec:
         pathType: Exact
         backend:
           service:
-            name: motherstream
+            name: staging-motherstream
             port:
               number: 8483
               
@@ -119,7 +105,7 @@ spec:
         pathType: Exact
         backend:
           service:
-            name: motherstream
+            name: staging-motherstream
             port:
               number: 8483
               
@@ -127,7 +113,7 @@ spec:
         pathType: Exact
         backend:
           service:
-            name: motherstream
+            name: staging-motherstream
             port:
               number: 8483
               
@@ -135,7 +121,7 @@ spec:
         pathType: Exact
         backend:
           service:
-            name: motherstream
+            name: staging-motherstream
             port:
               number: 8483
               
@@ -143,7 +129,7 @@ spec:
         pathType: Exact
         backend:
           service:
-            name: motherstream
+            name: staging-motherstream
             port:
               number: 8483
               
@@ -151,25 +137,16 @@ spec:
         pathType: Exact
         backend:
           service:
-            name: motherstream
+            name: staging-motherstream
             port:
               number: 8483
               
-      # Statistics endpoint
-      - path: /stat
-        pathType: Prefix
-        backend:
-          service:
-            name: nginx-rtmp
-            port:
-              number: 8989
-      
       # HLS streaming
       - path: /hls
         pathType: Prefix
         backend:
           service:
-            name: nginx-rtmp
+            name: staging-nginx-rtmp
             port:
               number: 80
       
@@ -178,7 +155,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: nginx-rtmp
+            name: staging-nginx-rtmp
             port:
               number: 80
       
@@ -187,6 +164,6 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: motherstream
+            name: staging-motherstream
             port:
-              number: 8483 
+              number: 8483

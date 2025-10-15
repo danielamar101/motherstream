@@ -1,0 +1,43 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: motherstream-backend-ingress
+  namespace: motherstream
+  labels:
+    environment: staging
+    project: motherstream
+  annotations:
+    # Backend-specific rewrite
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    
+    # Add these critical settings from the main ingress:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    
+    # CORS for API requests
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, OPTIONS, PUT, DELETE"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - staging.motherstream.live
+    secretName: staging-motherstream-live-tls
+  rules:
+  - host: staging.motherstream.live
+    http:
+      paths:
+      - path: /backend(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: staging-motherstream
+            port:
+              number: 8483

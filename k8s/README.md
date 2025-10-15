@@ -67,14 +67,26 @@ docker build -t nginx-rtmp:v1.0.0 ./nginx-config/
 
 ### Deploy Staging Environment
 
+**🎯 Recommended: Build and Deploy in One Step**
+
 ```bash
-# Quick deploy
+# Build Docker images and deploy (all-in-one)
+chmod +x build-and-deploy-staging.sh
+./build-and-deploy-staging.sh
+```
+
+**Alternative: Deploy Only (requires pre-built images)**
+
+```bash
+# Deploy only (no build)
 chmod +x deploy-staging.sh
 ./deploy-staging.sh
 
 # Or manually with kustomize
 kubectl apply -k overlays/staging
 ```
+
+> 📖 See [BUILD_AND_DEPLOY.md](BUILD_AND_DEPLOY.md) for detailed build and deployment guide.
 
 ### Deploy Production Environment
 

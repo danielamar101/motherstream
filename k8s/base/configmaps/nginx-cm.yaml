@@ -1,29 +1,6 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: motherstream-config
-  namespace: motherstream
-data:
-  DEBUG_PORT: "0"
-  HOST: ""
-  SSH_PORT: ""
-  NGINX_RTMP_PORT: ""
-  STAT_PORT: ""
-  SMTP_SERVER: ""
-  SMTP_PORT: ""
-  SMTP_USER: ""
-  SMTP_PASSWORD: ""
-  OBS_HOST: "macbook-pro"
-  OBS_PORT: "4455"
-  TOGGLE_DISCORD_NOTIFICATIONS: "false"
-  RECORD_DIR: "/var/www/streams/stream-recordings"
-  RECORD_STREAM: ""
-  LANG: "en_US.UTF-8"
-  LC_ALL: "en_US.UTF-8"
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
   name: nginx-config
   namespace: motherstream
 data:

@@ -45,15 +45,7 @@ spec:
             name: prod-motherstream
             port:
               number: 8483
-      
-      # Statistics endpoint  
-      - path: /stat
-        pathType: Prefix
-        backend:
-          service:
-            name: prod-nginx-rtmp
-            port:
-              number: 8989
+    
       
       # HLS streaming
       - path: /hls

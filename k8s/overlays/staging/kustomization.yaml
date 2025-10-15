@@ -6,20 +6,23 @@ namespace: motherstream
 resources:
   - ../../base
   - secrets.yaml
-  - persistent-volumes.yaml
+  - network/certificates.yaml
+  - network/motherstream-ingress.yaml
+  - network/motherstream-backend-ingress.yaml
+  - storage/persistent-volumes.yaml
+  - storage/staging-postgres.yaml
 
-patches:
-  - path: service-patches.yaml
-  - path: ingress-patch.yaml
-  - path: init-container-patches.yaml
+
+patchesStrategicMerge:
+  - patches/service-patches.yaml
+  - patches/init-container-patches.yaml
 
 namePrefix: staging-
 
 images:
-  - name: 192.168.49.1:5000/motherstream
+  - name: motherstream
     newTag: staging
   - name: frontend
-    newName: 192.168.49.1:5000/frontend
     newTag: staging
   - name: nginx-rtmp
     newTag: staging
@@ -34,9 +37,3 @@ replicas:
 
 commonLabels:
   environment: staging
-  
-configMapGenerator:
-  - name: staging-config
-    literals:
-      - ENVIRONMENT=staging
-      - LOG_LEVEL=debug 

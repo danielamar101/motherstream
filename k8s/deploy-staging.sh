@@ -5,6 +5,9 @@
 
 set -e
 
+echo "🔧 Configuring CoreDNS for Tailscale..."
+kubectl apply -k system/
+
 echo "🚀 Deploying Motherstream STAGING environment..."
 
 # Ensure we're in the correct directory

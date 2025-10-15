@@ -54,9 +54,8 @@ spec:
         persistentVolumeClaim:
           claimName: postgres-data-pvc
       - name: postgres-initdb
-        hostPath:
-          path: /home/motherstream/Desktop/motherstream/pgdata/initdb
-          type: DirectoryOrCreate
+        persistentVolumeClaim:
+          claimName: postgres-initdb-pvc
 ---
 apiVersion: v1
 kind: Service

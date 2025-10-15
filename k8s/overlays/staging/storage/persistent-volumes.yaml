@@ -1,18 +1,9 @@
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: postgres-data-pv-staging
-  namespace: motherstream
-spec:
-  capacity:
-    storage: 5Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: local-storage-staging
-  hostPath:
-    path: /home/motherstream/Desktop/motherstream/staging/pgdata/data
----
+# For true migration between cluster creations, consider using:
+# 1. Cloud-native storage (AWS EBS, GCE Persistent Disk, Azure Disk)
+# 2. Distributed storage (Longhorn, OpenEBS, Rook/Ceph)
+# 3. External database service (AWS RDS, Google Cloud SQL, etc.)
+
+# Current setup uses hostPath which is node-specific and won't migrate between clusters
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -24,7 +15,78 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  storageClassName: local-storage-staging
+  storageClassName: standard
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-data-pv-staging
+  namespace: motherstream
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard
+  hostPath:
+    path: /home/motherstream/Desktop/motherstream/staging/postgres-data
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pgdata-pv-staging
+  namespace: motherstream
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard
+  hostPath:
+    path: /home/motherstream/Desktop/motherstream/staging/pgdata
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pgdata-pvc
+  namespace: motherstream
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-initdb-pvc
+  namespace: motherstream
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-initdb-pv-staging
+  namespace: motherstream
+spec:
+  capacity:
+    storage: 100Mi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard
+  hostPath:
+    path: /home/motherstream/Desktop/motherstream/staging/postgres-initdb
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -37,7 +99,7 @@ spec:
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: local-storage-staging
+  storageClassName: standard
   hostPath:
     path: /home/motherstream/Desktop/motherstream/staging/stream-recordings
 ---
@@ -52,7 +114,7 @@ spec:
   resources:
     requests:
       storage: 20Gi
-  storageClassName: local-storage-staging
+  storageClassName: standard
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -65,7 +127,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: local-storage-staging
+  storageClassName: standard
   hostPath:
     path: /home/motherstream/Desktop/motherstream/staging/oryx
 ---
@@ -80,7 +142,7 @@ spec:
   resources:
     requests:
       storage: 2Gi
-  storageClassName: local-storage-staging
+  storageClassName: standard
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -93,7 +155,7 @@ spec:
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: local-storage-staging
+  storageClassName: standard
   hostPath:
     path: /home/motherstream/Desktop/motherstream/staging/certs
 ---
@@ -108,4 +170,4 @@ spec:
   resources:
     requests:
       storage: 500Mi
-  storageClassName: local-storage-staging 
+  storageClassName: standard 

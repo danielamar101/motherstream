@@ -9,8 +9,13 @@ RUN npm install
 
 COPY . /app
 
-# ARG VITE_API_URL=${VITE_API_URL}
+# Build argument for API URL (optional, can be overridden at runtime in dev mode)
+ARG VITE_API_URL
+ENV VITE_API_URL=${VITE_API_URL}
 
+# Build the frontend (for production)
 RUN npm run build-only
 
+# Development mode - runs vite dev server
+# Environment variables will be loaded at runtime from k8s secrets
 CMD ["npm", "run", "dev"]

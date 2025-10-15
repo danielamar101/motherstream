@@ -83,7 +83,7 @@ def dispatch(job: Job):
         elif job.type == JobType.TOGGLE_OBS_SRC:
             # Assumes payload contains necessary info like source_name, scene_name, only_off
             source_name = job.payload.get("source_name")
-            scene_name = job.payload.get("scene_name", "MOTHERSTREAM") # Default scene
+            scene_name = job.payload.get("scene_name", "MOTHERSTREAM STAGING") # Default scene
             only_off = job.payload.get("only_off", False)
             toggle_timespan = job.payload.get("toggle_timespan", 1) # Default timespan
             if source_name:
@@ -148,7 +148,7 @@ def dispatch(job: Job):
 
         elif job.type == JobType.FLASH_LOADING_MESSAGE:
             # Flash the loading message - equivalent to toggle_loading_message_source
-            scene_name = job.payload.get("scene_name", "MOTHERSTREAM")  # Default scene
+            scene_name = job.payload.get("scene_name", "MOTHERSTREAM STAGING")  # Default scene
             only_off = job.payload.get("only_off", False)
             toggle_timespan = job.payload.get("toggle_timespan", 1.5)  # Default timespan from original code
             

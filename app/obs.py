@@ -30,6 +30,7 @@ class OBSSocketManager():
         self.OBS_PASSWORD = os.environ.get("OBS_PASSWORD")
         if not self.OBS_PASSWORD:
             logger.warning("OBS_PASSWORD environment variable not set. Connection might fail.")
+        logger.info(f"Connecting to OBS: {self.OBS_HOST}:{self.OBS_PORT}")
         self.obs_websocket = obsws(self.OBS_HOST, self.OBS_PORT, self.OBS_PASSWORD)
         logger.debug("Connecting to websocket...")
         self.__connect()
@@ -270,6 +271,7 @@ class OBSSocketManager():
             time.sleep(wait_time)
             
             # Create new websocket instance and connect
+            logger.info(f"Creating new websocket instance and connecting to OBS: {self.OBS_HOST}:{self.OBS_PORT}")
             self.obs_websocket = obsws(self.OBS_HOST, self.OBS_PORT, self.OBS_PASSWORD)
             self.__connect()
             

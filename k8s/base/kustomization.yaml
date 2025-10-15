@@ -3,16 +3,15 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
-  - configmap.yaml
-  - postgres.yaml
-  - jaeger.yaml
-  - nginx-rtmp.yaml
-  - oryx.yaml
-  - motherstream.yaml
-  - frontend.yaml
-  - ingress.yaml
-  - rtmp-ingress.yaml
-  # certificates.yaml excluded for local development
+  - configmaps/motherstream-cm.yaml
+  - configmaps/nginx-cm.yaml
+  - deploys/jaeger.yaml
+  - deploys/nginx-rtmp.yaml
+  - deploys/oryx.yaml
+  - deploys/motherstream.yaml
+  - deploys/frontend.yaml
+  - network/rtmp-ingress.yaml
+  
 
 commonLabels:
   project: motherstream

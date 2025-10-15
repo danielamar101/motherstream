@@ -1,0 +1,26 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: motherstream-live-cert
+  namespace: motherstream
+spec:
+  secretName: staging-motherstream-live-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+  - staging.motherstream.live
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: staging-always12-live-cert
+  namespace: motherstream
+spec:
+  secretName: staging-always12-live-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+  - staging.always12.live 

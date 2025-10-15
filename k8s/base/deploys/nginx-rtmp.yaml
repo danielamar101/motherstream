@@ -18,6 +18,7 @@ spec:
       containers:
       - name: nginx-rtmp
         image: nginx-rtmp:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
           name: http
@@ -25,6 +26,8 @@ spec:
           name: https
         - containerPort: 1936
           name: rtmp
+        - containerPort: 8989
+          name: stats
         volumeMounts:
         - name: nginx-config
           mountPath: /etc/nginx/nginx.conf
@@ -33,6 +36,10 @@ spec:
         - name: nginx-config
           mountPath: /etc/nginx/rtmp.conf
           subPath: rtmp.conf
+          readOnly: true
+        - name: nginx-config
+          mountPath: /etc/nginx/https-config.conf
+          subPath: https-config.conf
           readOnly: true
         - name: nginx-config
           mountPath: /var/www/stat.xsl
@@ -89,5 +96,9 @@ spec:
     targetPort: 1936
     protocol: TCP
     name: rtmp
+  - port: 8989
+    targetPort: 8989
+    protocol: TCP
+    name: stats
   selector:
     app: nginx-rtmp 

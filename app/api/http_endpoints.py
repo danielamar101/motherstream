@@ -159,11 +159,11 @@ async def restart_media_source(input_name: str):
         raise HTTPException(status_code=500, detail=f"Failed to restart media source: {str(e)}")
 
 @http_blueprint.get("/obs/source-visibility/{source_name}")
-async def check_source_visibility(source_name: str, scene_name: str = "MOTHERSTREAM"):
+async def check_source_visibility(source_name: str, scene_name: str = "MOTHERSTREAM STAGING"):
     """
     Check if a source is currently visible in a scene.
     :param source_name: Name of the source to check
-    :param scene_name: Name of the scene (default: MOTHERSTREAM)
+    :param scene_name: Name of the scene (default: MOTHERSTREAM STAGING)
     """
     try:
         is_visible = obs_socket_manager_instance.is_source_visible(
