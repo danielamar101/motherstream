@@ -24,7 +24,4 @@
 - Fix algo
 - selectively record streams
 - Persist queue state in dockerized env
-
-
-- Instead of using changeover flag have changeover be the stream key of the kicked streamer
-- 
+ 

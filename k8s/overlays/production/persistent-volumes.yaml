@@ -11,7 +11,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: local-storage-production
   hostPath:
-    path: /home/motherstream/Desktop/motherstream/production/pgdata/data
+    path: /home/docker/production/pgdata/data
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -39,7 +39,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: local-storage-production
   hostPath:
-    path: /home/motherstream/Desktop/motherstream/production/stream-recordings
+    path: /home/docker/production/stream-recordings
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -67,7 +67,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: local-storage-production
   hostPath:
-    path: /home/motherstream/Desktop/motherstream/production/oryx
+    path: /home/docker/production/oryx
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -95,7 +95,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: local-storage-production
   hostPath:
-    path: /home/motherstream/Desktop/motherstream/production/certs
+    path: /home/docker/production/certs
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

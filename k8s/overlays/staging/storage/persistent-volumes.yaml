@@ -30,7 +30,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: standard
   hostPath:
-    path: /home/motherstream/Desktop/motherstream/staging/postgres-data
+    path: /home/docker/staging/postgres-data
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -45,7 +45,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: standard
   hostPath:
-    path: /home/motherstream/Desktop/motherstream/staging/pgdata
+    path: /home/docker/staging/pgdata
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -86,7 +86,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: standard
   hostPath:
-    path: /home/motherstream/Desktop/motherstream/staging/postgres-initdb
+    path: /home/docker/staging/postgres-initdb
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -101,7 +101,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: standard
   hostPath:
-    path: /home/motherstream/Desktop/motherstream/staging/stream-recordings
+    path: /home/docker/staging/stream-recordings
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -129,7 +129,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: standard
   hostPath:
-    path: /home/motherstream/Desktop/motherstream/staging/oryx
+    path: /home/docker/staging/oryx
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -157,7 +157,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: standard
   hostPath:
-    path: /home/motherstream/Desktop/motherstream/staging/certs
+    path: /home/docker/staging/certs
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

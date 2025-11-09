@@ -44,6 +44,7 @@ class StreamManager(metaclass=Singleton):
 
     current_song_data = None
 
+
     def __init__(self, stream_queue):
         self.stream_queue = stream_queue
         # No longer need to instantiate OBSSocketManager here
@@ -53,9 +54,10 @@ class StreamManager(metaclass=Singleton):
         self.loading_message_stop_event = threading.Event()
         self.loading_message_thread = None
         
+        env = os.getenv('ENVIRONMENT')
         # Stream health monitoring
         self.stream_health_checker = StreamHealthChecker(
-            stream_url="rtmp://127.0.0.1:1935/motherstream/live",
+            stream_url=f"rtmp://{env}-oryx:1935/motherstream/live",
             unhealthy_threshold_seconds=30
         )
 

@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oryx-config
+  namespace: motherstream
+data:
+  srs.vhost.conf: |
+    # !!! Important: This file is produced and maintained by the Oryx, please never modify it.
+
+    hls {
+        enabled on;
+        hls_fragment 10;
+        hls_window 60;
+        hls_aof_ratio 2.1;
+        hls_path ./objs/nginx/html;
+        hls_m3u8_file [app]/[stream].m3u8;
+        hls_ts_file [app]/[stream]-[seq]-[timestamp].ts;
+        hls_wait_keyframe on;
+        hls_dispose 15;
+    }
+
+    forward {
+        enabled on;
+        backend http://staging-motherstream.motherstream.svc.cluster.local:8483/;
+    }
+
+    http_hooks {
+        # whether the http hooks enable.
+        # default off.
+        enabled         on;
+        on_publish      http://staging-motherstream.motherstream.svc.cluster.local:8483/;
+        on_unpublish      http://staging-motherstream.motherstream.svc.cluster.local:8483/;
+
+    }
+
+

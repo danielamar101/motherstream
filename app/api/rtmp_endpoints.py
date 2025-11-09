@@ -40,7 +40,11 @@ async def on_publish(
     print(request_obj)
 
     record_stream = os.getenv('RECORD_STREAM')
+
+    env = os.getenv('ENVIRONMENT')
+
     forward_stream = {
+        # The url is given back to oryx, to then decide where to forward stream to. It must always forward to itself, just on a new stream app. 
         "urls": [
             f"rtmp://127.0.0.1:1935/motherstream/live{param}"
         ]
@@ -50,7 +54,7 @@ async def on_publish(
         ]
     }
     if record_stream: 
-        forward_stream["urls"].append(f"rtmp://127.0.0.1:1936/live/{stream}") #nginx record path
+        forward_stream["urls"].append(f"rtmp://{env}-nginx-rtmp:1936/live/{stream}") #nginx record path
 
     if app == 'motherstream':
         print("Motherstream app. Doing nothing.")

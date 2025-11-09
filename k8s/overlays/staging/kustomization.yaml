@@ -16,6 +16,8 @@ resources:
 patchesStrategicMerge:
   - patches/service-patches.yaml
   - patches/init-container-patches.yaml
+  - configmaps/motherstream-cm.yaml
+  - configmaps/oryx-config.yaml
 
 namePrefix: staging-
 

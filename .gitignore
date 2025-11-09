@@ -21,3 +21,4 @@ pg/
 **/setup-tailscale.sh
 k8s/base/tailscale-config.yaml
 logs/*
+**/oryx-staging

@@ -5,6 +5,7 @@ resources:
   - namespace.yaml
   - configmaps/motherstream-cm.yaml
   - configmaps/nginx-cm.yaml
+  - configmaps/oryx-config.yaml
   - deploys/jaeger.yaml
   - deploys/nginx-rtmp.yaml
   - deploys/oryx.yaml

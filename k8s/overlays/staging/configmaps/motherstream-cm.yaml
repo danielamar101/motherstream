@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: motherstream-config
+  namespace: motherstream
+data:
+  # Staging-specific overrides and additions
+  # TOGGLE_DISCORD_NOTIFICATIONS: "true"
+  ENVIRONMENT: "staging"
+  
+

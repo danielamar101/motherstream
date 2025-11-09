@@ -71,7 +71,7 @@ spec:
           claimName: certs-pvc
       - name: certbot-www
         hostPath:
-          path: /home/motherstream/Desktop/motherstream/certbot/www/
+          path: /home/docker/staging/certbot/www/
           type: DirectoryOrCreate
 ---
 apiVersion: v1

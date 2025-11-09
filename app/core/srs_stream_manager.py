@@ -13,7 +13,8 @@ logging.getLogger("httpcore.http11").setLevel(logging.WARNING)
 logging.getLogger("httpcore.connection").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-NGINX_HOST = os.environ.get("HOST")
+env = os.getenv('ENVIRONMENT')
+NGINX_HOST = os.environ.get("HOST",f"{env}-nginx-rtmp")
 CONTROL_PORT = str(os.environ.get("STAT_PORT"))
 
 async def rename_latest_recording(dj_name):
@@ -57,7 +58,7 @@ async def record_stream(stream_key, dj_name, action):
         # Use an async HTTP library (httpx instead of requests)
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"http://{NGINX_HOST}:{CONTROL_PORT}/control/record/{action}",
+                f"http://{env}-{NGINX_HOST}:{CONTROL_PORT}/control/record/{action}",
                 params=params,
             )
         if response.status_code in [200, 204]:
@@ -87,7 +88,7 @@ def drop_stream_publisher(stream_key):
 
     headers = {
         "Content-Type": "application/json",
-        "Authorization": os.environ.get("SRS_AUTHORIZATION_BEARER", "Invalid auth bearer")
+        "Authorization": f"Bearer {os.environ.get("SRS_AUTHORIZATION_BEARER", "Invalid auth bearer")}"
     }
     params = {
       "token": "always12",
@@ -97,7 +98,7 @@ def drop_stream_publisher(stream_key):
     }
     logger.info("Kicking stream publisher...")
     try:
-        response = requests.post(f"http://localhost:2022/terraform/v1/mgmt/streams/kickoff",json=params, headers=headers)
+        response = requests.post(f"http://{env}-oryx:2022/terraform/v1/mgmt/streams/kickoff",json=params, headers=headers)
         if response.status_code == 200:
             logger.info("Successfully dropped publisher.")
         else:
@@ -112,12 +113,12 @@ def get_stream_state():
 
     headers = {
         "Content-Type": "application/json",
-        "Authorization": "Bearer srs-v2-a084f4b728964d3084564329affb906d" 
+        "Authorization": f"Bearer {os.environ.get("SRS_AUTHORIZATION_BEARER", "Invalid auth bearer")}"
     }
 
     logger.info("Obtaining all streamer info ")
     try:
-        response = requests.post(f"http://localhost:2022/terraform/v1/mgmt/streams/query",headers=headers)
+        response = requests.post(f"http://{env}-oryx:2022/terraform/v1/mgmt/streams/query",headers=headers)
         if response.status_code == 200:
             json_response = response.json()
             streams = [client["stream"] for client in json_response["data"]["streams"]]

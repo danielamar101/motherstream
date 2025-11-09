@@ -8,6 +8,8 @@ set -e
 echo "🏗️  Building and Deploying Motherstream STAGING environment..."
 echo ""
 
+eval $(minikube docker-env)
+
 # Ensure we're in the k8s directory
 cd "$(dirname "$0")"
 PROJECT_ROOT="$(dirname "$(pwd)")"
@@ -49,7 +51,6 @@ print_success "Minikube is running"
 # Build images on host (has internet access), then load into minikube
 # This avoids network connectivity issues inside minikube's Docker daemon
 print_info "Building images on host Docker daemon..."
-print_info "Images will be built locally and then loaded into minikube"
 
 echo ""
 echo "🔨 Building Docker Images..."
@@ -62,12 +63,11 @@ echo ""
 print_info "Building Motherstream backend..."
 cd "$PROJECT_ROOT"
 docker build -t motherstream:staging \
-    -f Dockerfile . 2>&1 | grep -E "^Step|Successfully|ERROR" || true
+    -f Dockerfile . \
+    --cache-from=motherstream:staging 
+
 if [ ${PIPESTATUS[0]} -eq 0 ]; then
     print_success "Motherstream backend built successfully"
-    print_info "Loading Motherstream backend into minikube..."
-    minikube image load motherstream:staging
-    print_success "Image loaded into minikube"
 else
     print_error "Failed to build Motherstream backend"
     exit 1
@@ -80,13 +80,11 @@ cd "$PROJECT_ROOT/frontend"
 docker build \
     --build-arg VITE_API_URL=https://staging.motherstream.live/backend \
     -t frontend:staging \
-    -f Dockerfile . 2>&1 | grep -E "^Step|Successfully|ERROR" || true
+    -f Dockerfile . \
+    --cache-from=frontend:staging 
 
 if [ ${PIPESTATUS[0]} -eq 0 ]; then
     print_success "Frontend built successfully"
-    print_info "Loading Frontend into minikube..."
-    minikube image load frontend:staging
-    print_success "Image loaded into minikube"
 else
     print_error "Failed to build Frontend"
     exit 1
@@ -96,24 +94,20 @@ fi
 print_info "Building NGINX RTMP server..."
 cd "$PROJECT_ROOT/nginx-config"
 docker build -t nginx-rtmp:staging \
-    -f Dockerfile . 2>&1 | grep -E "^Step|Successfully|ERROR" || true
+    -f Dockerfile . \
+    --cache-from=nginx-rtmp:staging 
 if [ ${PIPESTATUS[0]} -eq 0 ]; then
     print_success "NGINX RTMP server built successfully"
-    print_info "Loading NGINX RTMP server into minikube..."
-    minikube image load nginx-rtmp:staging
-    print_success "Image loaded into minikube"
 else
     print_error "Failed to build NGINX RTMP server"
     exit 1
 fi
 
-echo ""
 print_success "All images built and loaded successfully!"
 print_info "Images are ready for deployment in minikube"
 
 # List built images on host
-echo ""
-echo "📦 Built Images (on host):"
+echo "Built Images:"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 docker images | grep -E "(motherstream|frontend|nginx-rtmp).*staging" | head -10 || print_warning "No staging images found"
 

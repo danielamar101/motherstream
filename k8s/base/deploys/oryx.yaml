@@ -34,6 +34,9 @@ spec:
         volumeMounts:
         - name: oryx-data
           mountPath: /data
+        - name: oryx-config
+          mountPath: /data/config/srs.vhost.conf
+          subPath: srs.vhost.conf
         resources:
           requests:
             memory: "256Mi"

@@ -13,9 +13,11 @@ echo "🚀 Deploying Motherstream STAGING environment..."
 # Ensure we're in the correct directory
 cd "$(dirname "$0")"
 
+minikube ssh
 # Create staging data directories if they don't exist
-echo "📁 Creating staging data directories..."
-mkdir -p ../staging/{pgdata/data,stream-recordings,oryx,certs}
+sudo mkdir -p staging/{pgdata/data,stream-recordings,oryx,certs} && exit
+
+sudo minikube cp srs/srs.vhost.conf staging/oryx/config/srs.vhost.conf
 
 # Build and apply staging configuration
 echo "🔧 Building staging configuration with Kustomize..."
