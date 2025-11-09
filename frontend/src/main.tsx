@@ -8,7 +8,7 @@ import { StrictMode } from "react"
 import { OpenAPI } from "./client"
 import theme from "./theme"
 
-OpenAPI.BASE = "https://motherstream.live/backend"
+OpenAPI.BASE = import.meta.env.VITE_API_URL || "https://motherstream.live/backend"
 OpenAPI.TOKEN = async () => {
   return localStorage.getItem("access_token") || ""
 }

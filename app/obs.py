@@ -16,6 +16,12 @@ obsws_logger.setLevel(logging.CRITICAL + 1)
 app_api_obs_log = logging.getLogger('app.api.obs')
 # app_api_obs_log.setLevel(logging.CRITICAL + 1)
 
+
+class OBSOperationalError(Exception):
+    """Exception for OBS operational errors (not connection issues)"""
+    pass
+
+
 class OBSSocketManager():
 
     obs_websocket = None
@@ -310,7 +316,7 @@ class OBSSocketManager():
                     scene_id = item['sceneItemId']
                     break
             if not scene_id:
-                raise Exception(f"Error: Cannot find source '{source_name}' in scene '{scene_name}'.")
+                raise OBSOperationalError(f"Cannot find source '{source_name}' in scene '{scene_name}'.")
 
             # 3. Get source properties to check if it's enabled (visible)
             scene_item_properties = self.obs_websocket.call(requests.GetSceneItemEnabled(sceneName=scene_name, sceneItemId=scene_id))
@@ -319,8 +325,18 @@ class OBSSocketManager():
             
             logger.debug(f"Source '{source_name}' visibility in '{scene_name}': {'Visible' if is_visible else 'Hidden'}")
             return is_visible
+        except OBSOperationalError as e:
+            # Source doesn't exist - this is not a connection issue
+            logger.error(f"OBS operational error while checking source visibility: {e}")
+            return False
+        except WebSocketConnectionClosedException as e:
+            # Connection error - mark unhealthy
+            logger.error(f"WebSocket connection closed while checking source visibility: {e}")
+            self._connection_healthy = False
+            return False
         except Exception as e:
-            logger.error(f"Exception while checking source visibility: {e}")
+            # Other unexpected errors
+            logger.error(f"Unexpected exception while checking source visibility: {e}")
             self._connection_healthy = False
             return False
 
@@ -340,7 +356,7 @@ class OBSSocketManager():
                         scene_id = item['sceneItemId']
                         break;
                 if not scene_id:
-                    raise Exception("Error getting source id. Cannot find proper source.")
+                    raise OBSOperationalError(f"Error getting source id. Cannot find source '{source_name}' in scene '{scene_name}'.")
 
                 #3. Hide/unhide the source in the current scene only if it is on already
                 if self.is_source_visible(source_name,scene_name):
@@ -353,14 +369,21 @@ class OBSSocketManager():
                     self.obs_websocket.call(requests.SetSceneItemEnabled(sceneName=scene_name, sceneItemId=scene_id, sceneItemEnabled=True))
                     # time.sleep(toggle_timespan)
                     logger.info("...done toggling.")
+            except OBSOperationalError as e:
+                # Operational errors (source not found, etc) - don't reconnect
+                logger.error(f"OBS operational error: {e}")
+                logger.error("This is not a connection issue - skipping reconnection")
             except WebSocketConnectionClosedException as e:
+                # Connection closed - reconnect
                 logger.error("WebSocket is closed. Is the OBS app open?")
                 logger.error("Attempting to restart connection to the websocket...")
                 self._connection_healthy = False
                 self._attempt_reconnect()
                 time.sleep(2)
             except Exception as e:
-                logger.error(f"Exception with OBS WebSocket: {e}")
+                # Other unexpected errors - log and reconnect as safety measure
+                logger.error(f"Unexpected exception with OBS WebSocket: {e}")
+                logger.warning("Marking connection as unhealthy and attempting reconnection")
                 self._connection_healthy = False
                 self._attempt_reconnect()
                 time.sleep(2)

@@ -35,4 +35,4 @@ ENV PYTHONPATH="/usr/local/lib/python3.12:/app/dependencies:$PYTHONPATH"
 
 ENV LOG_LEVEL="info"
 # Command to run the FastAPI app with Uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8483"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8483", "--log-config", "logging_config.yml"]

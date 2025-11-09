@@ -16,6 +16,11 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 NGINX_HOST = os.environ.get("HOST")
 CONTROL_PORT = str(os.environ.get("STAT_PORT"))
 
+# Oryx/SRS configuration from environment
+ORYX_HOST = os.getenv("ORYX_HOST", "localhost")
+ORYX_PORT = os.getenv("ORYX_PORT", "2022")
+ORYX_API_BASE = f"http://{ORYX_HOST}:{ORYX_PORT}/terraform/v1/mgmt"
+
 async def rename_latest_recording(dj_name):
     RECORD_DIR = os.environ.get("RECORD_DIR", "/var/www/streams/stream-recordings")
     record_dir = RECORD_DIR 
@@ -97,7 +102,7 @@ def drop_stream_publisher(stream_key):
     }
     logger.info("Kicking stream publisher...")
     try:
-        response = requests.post(f"http://localhost:2022/terraform/v1/mgmt/streams/kickoff",json=params, headers=headers)
+        response = requests.post(f"{ORYX_API_BASE}/streams/kickoff",json=params, headers=headers)
         if response.status_code == 200:
             logger.info("Successfully dropped publisher.")
         else:
@@ -112,12 +117,12 @@ def get_stream_state():
 
     headers = {
         "Content-Type": "application/json",
-        "Authorization": "Bearer srs-v2-a084f4b728964d3084564329affb906d" 
+        "Authorization": os.environ.get("SRS_AUTHORIZATION_BEARER", "Invalid auth bearer")
     }
 
     logger.info("Obtaining all streamer info ")
     try:
-        response = requests.post(f"http://localhost:2022/terraform/v1/mgmt/streams/query",headers=headers)
+        response = requests.post(f"{ORYX_API_BASE}/streams/query",headers=headers)
         if response.status_code == 200:
             json_response = response.json()
             streams = [client["stream"] for client in json_response["data"]["streams"]]

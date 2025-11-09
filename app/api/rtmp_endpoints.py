@@ -13,6 +13,13 @@ logger = logging.getLogger(__name__)
 multipart_logger = logging.getLogger('multipart.multipart')
 multipart_logger.setLevel(logging.CRITICAL + 1)
 
+# RTMP configuration from environment
+RTMP_HOST = os.getenv("RTMP_HOST", "127.0.0.1")
+RTMP_PORT = os.getenv("RTMP_PORT", "1935")
+
+RTMP_RECORD_HOST = os.getenv("RTMP_RECORD_HOST", "127.0.0.1")
+RTMP_RECORD_PORT = os.getenv("RTMP_RECORD_PORT", "1936")
+
 rtmp_blueprint = APIRouter()
 
 # RTMP handle all callback
@@ -42,7 +49,7 @@ async def on_publish(
     record_stream = os.getenv('RECORD_STREAM')
     forward_stream = {
         "urls": [
-            f"rtmp://127.0.0.1:1935/motherstream/live{param}"
+            f"rtmp://{RTMP_HOST}:{RTMP_PORT}/motherstream/live{param}"
         ]
     }
     do_not_forward_stream = {
@@ -50,7 +57,7 @@ async def on_publish(
         ]
     }
     if record_stream: 
-        forward_stream["urls"].append(f"rtmp://127.0.0.1:1936/live/{stream}") #nginx record path
+        forward_stream["urls"].append(f"rtmp://{RTMP_RECORD_HOST}:{RTMP_RECORD_PORT}/live/{stream}") #nginx record path
 
     if app == 'motherstream':
         print("Motherstream app. Doing nothing.")

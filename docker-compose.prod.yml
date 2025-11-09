@@ -1,0 +1,68 @@
+services:
+  motherstream:
+    container_name: motherstream-prod
+    ports:
+      - "8483:8483"
+    env_file: .env.prod
+    volumes:
+      - ./stream-recordings:/var/www/streams/stream-recordings
+    networks:
+      - prod-network
+    dns:
+      - 100.100.100.100  # Tailscale MagicDNS
+      - 8.8.8.8          # Fallback DNS
+
+  frontend:
+    container_name: frontend-prod
+    ports:
+      - "5173:5173"
+    env_file: frontend/.env.prod
+    networks:
+      - prod-network
+
+  nginx-rtmp:
+    container_name: nginx-prod
+    volumes: 
+      - ./nginx-config/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx-config/rtmp.conf:/etc/nginx/rtmp.conf
+      # Production nginx will be internal only - router handles HTTPS
+      - ./nginx-config/stat.xsl:/var/www/stat.xsl
+      - ./stream-recordings:/var/www/streams/stream-recordings
+    ports:
+      - "1936:1936"   #Recording port
+      - "8989:8989"   # Stats port
+    networks:
+      - prod-network
+
+  oryx:
+    container_name: oryx-prod
+    ports:
+      - "2022:2022"   # Oryx API (optional, can also access via nginx-router)
+      - "1935:1935"   # RTMP publishing port
+      # - "8080:8080" # HTTP/HLS playback - now routed through nginx-router
+      - "8000:8000/udp"
+      - "10800:10800/udp"
+    volumes:
+      - ./oryx/:/data
+    networks:
+      - prod-network
+
+  postgres:
+    container_name: postgres-prod
+    ports:
+      - "5432:5432"
+    env_file: .env.prod
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USER}
+    volumes:
+      - ./pgdata/data:/var/lib/postgresql/data
+      - ./pgdata/initdb:/docker-entrypoint-initdb.d
+    networks:
+      - prod-network
+
+networks:
+  prod-network:
+    external: true
+

@@ -1,5 +1,6 @@
 import threading
 import time
+import os
 import logging
 from queue import Queue
 from enum import Enum
@@ -92,10 +93,13 @@ def dispatch(job: Job):
                 if source_name == "gstreamer":
                     actual_source_name = "GMOTHERSTREAM"
                 elif source_name == "timer":
-                    actual_source_name = "TIMER1"
+                    actual_source_name = "TIMER"
                 elif source_name == "loading":
                     actual_source_name = "LOADING"
                 # Add more mappings as needed
+
+                if os.environ.get("ENVIRONMENT") == "staging":
+                    actual_source_name = f"{actual_source_name} Staging"
 
                 logger.info(f"Toggling OBS source: {scene_name}:{actual_source_name}, only_off={only_off}")
                 obs_socket_manager_instance.toggle_obs_source(

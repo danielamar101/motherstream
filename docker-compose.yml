@@ -1,16 +1,16 @@
 services:
   motherstream:
     depends_on:
-    - jaeger
+    # - jaeger
     - postgres
     - oryx
     container_name: motherstream
     build:
       context: .  
       dockerfile: Dockerfile 
-    # ports:
-    #   - 8483:8483
-    network_mode: host
+    ports:
+      - 8483:8483
+    # network_mode: host
     env_file: .env
     volumes:
       - ./stream-recordings:/var/www/streams/stream-recordings
@@ -18,17 +18,17 @@ services:
 
   frontend:
     container_name: frontend
-    network_mode: host
+    # network_mode: host
     build:
       context: ./frontend  
       dockerfile: Dockerfile 
     env_file: frontend/.env
     restart: unless-stopped
-    # ports:
-    #   - 5173:5173
+    ports:
+      - 5173:5173
 
   nginx-rtmp:
-    network_mode: host
+    # network_mode: host
     container_name: nginx
     restart: unless-stopped
     build:
@@ -42,38 +42,40 @@ services:
       - ./stream-recordings:/var/www/streams/stream-recordings
       - ./certs/:/etc/letsencrypt/
       - ./certbot/www/:/var/www/certbot/:ro
-    # ports:
-    #   - 1936:1936
+    ports:
+      - 1938:1936
   oryx:
-    network_mode: host
+    # network_mode: host
     container_name: oryx
     depends_on:
       - nginx-rtmp
     image: ossrs/oryx:5.15.20
-    # ports:
-      # - 2022:2022
-    #   - 1935:1935
-    #   - 8080:8080
-    #   - 8000:8000/udp
-    #   - 10800:10800/udp
+    ports:
+      - 2022:2022
+      - 1937:1935
+      - 8080:8080
+      - 8000:8000/udp
+      - 10800:10800/udp
     volumes:
       - ./oryx/:/data
     restart: unless-stopped
-  jaeger:
-    container_name: jaeger
-    restart: unless-stopped
-    image: jaegertracing/all-in-one:latest
-    environment:
-      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
-    ports:
-      - "16686:16686"
-      - "4317:4317" 
-      - "9411:9411"
+  # jaeger:
+  #   container_name: jaeger
+  #   restart: unless-stopped
+  #   image: jaegertracing/all-in-one:latest
+  #   environment:
+  #     - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+  #   ports:
+  #     - "16686:16686"
+  #     - "4317:4317" 
+  #     - "9411:9411"
   
   postgres:
-    network_mode: host
+    # network_mode: host
     image: postgres:15.12
     container_name: postgres
+    ports:
+      - 5432:5432
     env_file:
       - .env
     environment:

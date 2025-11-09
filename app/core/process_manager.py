@@ -53,9 +53,11 @@ class StreamManager(metaclass=Singleton):
         self.loading_message_stop_event = threading.Event()
         self.loading_message_thread = None
         
-        # Stream health monitoring
+        # Stream health monitoring - Use environment variables for RTMP configuration
+        rtmp_host = os.getenv("RTMP_HOST", "127.0.0.1")
+        rtmp_port = os.getenv("RTMP_PORT", "1935")
         self.stream_health_checker = StreamHealthChecker(
-            stream_url="rtmp://127.0.0.1:1935/motherstream/live",
+            stream_url=f"rtmp://{rtmp_host}:{rtmp_port}/motherstream/live",
             unhealthy_threshold_seconds=30
         )
 
@@ -265,7 +267,7 @@ class StreamManager(metaclass=Singleton):
             if not lead_stream:
                 add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True, "toggle_timespan": 1})
                 self.stop_loading_message_thread()
-                logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer off)")
+                logger.info("Enqueued TOGGLE_OBS_SRC job (gstreamer off) due to no lead stream")
                 # Reset health checker when no stream is active
                 self.stream_health_checker.reset()
             else:

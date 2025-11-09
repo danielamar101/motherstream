@@ -1,1 +1,9 @@
-frontend/
+frontend/pgdata/
+staging/
+certs/
+certbot/
+oryx/
+stream-recordings/
+.git/
+.venv/
+pgdata.tmp/

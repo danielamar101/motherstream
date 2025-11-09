@@ -1,7 +1,6 @@
 export DEBUG_PORT=
 export HOST=
 export SSH_PORT=
-export NGINX_RTMP_PORT=
 export SENTRY_DSN=
 export OBS_HOST=
 export OBS_PORT=

@@ -46,19 +46,20 @@ async def lifespan(app: FastAPI):
     logger.info("SERVER SHUTDOWN")
     process_manager.obs_socket_manager.disconnect()
     
+# Get environment-specific origins
+ENV_ORIGINS = os.getenv("ALLOWED_ORIGINS", "").split(",")
+ENV_ORIGINS = [origin.strip() for origin in ENV_ORIGINS if origin.strip()]
+
 origins = [
     "http://192.168.1.100:5173", 
     "http://localhost:5173",     
     "http://localhost", 
-    "https://always12.live/", 
-    "http://always12.live/",
     "http://raspberry:5173/",
     "http://motherstream.xyz",    
     "https://motherstream.xyz",    
-    "https://motherstream.live",
-    "http://motherstream.live",
     "http://54.164.3.167",
     "http://54.164.3.167:5173",
+    *ENV_ORIGINS,  # Add environment-specific origins
 ]
 middleware = [ Middleware(
     CORSMiddleware,
