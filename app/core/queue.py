@@ -108,6 +108,35 @@ class StreamQueue(metaclass=Singleton):
         except Exception as e:
             logger.exception(f"Error removing client from queue: {e}")
 
+    def queue_client_stream_if_not_exists(self, user: User) -> bool:
+        """
+        Atomically check if stream key exists and add if not.
+        Returns True if added, False if already exists.
+        """
+        with queue_lock:
+            # Check if already in queue
+            for existing_user in self.stream_queue:
+                if existing_user.stream_key == user.stream_key:
+                    logger.debug(f"Stream key {user.stream_key} already in queue")
+                    return False
+            # Not in queue, add it
+            self.stream_queue.append(user)
+        self._write_persistent_state()
+        logger.debug(f"Added {user.stream_key} to queue")
+        return True
+
+    def get_lead_streamer_info(self):
+        """
+        Atomically get lead streamer info.
+        Returns tuple: (stream_key, user_object, queue_length)
+        All values are None/0 if queue is empty.
+        """
+        with queue_lock:
+            if self.stream_queue:
+                lead_user = self.stream_queue[0]
+                return (lead_user.stream_key, lead_user, len(self.stream_queue))
+            return (None, None, 0)
+
     def clear_queue(self):
         self.stream_queue = []
 

@@ -2,7 +2,7 @@ from fastapi.responses import JSONResponse
 from fastapi import Form, APIRouter, Body
 
 from main import process_manager
-from ..lock_manager import lock as queue_lock
+from ..lock_manager import lock as queue_lock, state_lock
 from ..db.validation import ensure_valid_user
 
 import logging
@@ -65,79 +65,105 @@ async def on_publish(
 
 
     if action == 'on_unpublish':
-        PRIORITY = process_manager.get_priority_key()
-        lead_stream_key = process_manager.stream_queue.lead_streamer()
-
-        if stream and stream != lead_stream_key:
-            # streamer in the queue but not lead left, just update state
-            print("Removing streamer from queue")
-            process_manager.stream_queue.remove_client_with_stream_key(stream)
-            return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
+        # Atomically check state and determine action
+        should_switch = False
+        with queue_lock:
+            with state_lock:
+                PRIORITY = process_manager.priority_key
+                lead_stream_key = process_manager.stream_queue.lead_streamer()
+                
+                # Case 1: Not the lead streamer, just remove from queue
+                if stream and stream != lead_stream_key:
+                    logger.info(f"Removing non-lead streamer {stream} from queue")
+                    process_manager.stream_queue.remove_client_with_stream_key(stream)
+                    return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
+                
+                # Case 2: Priority streamer disconnecting
+                if PRIORITY and PRIORITY == stream:
+                    logger.info(f"Priority streamer {stream} disconnecting")
+                    process_manager.priority_key = None
+                    return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
+                
+                # Case 3: Lead streamer disconnecting - need to switch
+                if stream and stream == lead_stream_key:
+                    should_switch = True
+                else:
+                    # Case 4: Other streamer, just remove
+                    logger.info(f"Removing streamer {stream} from queue")
+                    process_manager.stream_queue.remove_client_with_stream_key(stream)
+                    return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
         
-        if PRIORITY and PRIORITY == stream:
-            process_manager.set_priority_key(None)
+        # Call switch_stream OUTSIDE the locks to avoid deadlock
+        if should_switch:
+            logger.info(f"Lead streamer {stream} disconnecting, switching stream")
+            process_manager.switch_stream()
             return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
-        else:
-            if stream and stream == lead_stream_key:
-                process_manager.switch_stream()
-                return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
-            else: # remove the correct streamer from the queue
-                print("Removing streamer from queue")
-                process_manager.stream_queue.remove_client_with_stream_key(stream)
-                print("Done")
-                return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
 
     elif action == 'on_forward':
-        lead_stream_key = process_manager.stream_queue.lead_streamer()
-        if stream and stream == lead_stream_key:
-            print(f"----> FORWARDING: {stream}")
-            return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
-        else:
-            print(f"----> NOT FORWARDING: {stream}")
-            return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
+        # Atomically check if this stream is the lead
+        with queue_lock:
+            lead_stream_key = process_manager.stream_queue.lead_streamer()
+            if stream and stream == lead_stream_key:
+                logger.info(f"FORWARDING: {stream}")
+                return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
+            else:
+                logger.info(f"NOT FORWARDING: {stream}")
+                return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
 
     elif action == 'on_publish':
+        # Validate user first (no lock needed for this)
         user = ensure_valid_user(stream)
         if not user:
             return JSONResponse(status_code=401, content={"message": "Invalid stream key. you do not have permission to join the queue."})
         
-        lead_stream_key = process_manager.stream_queue.lead_streamer() # get stream key in the front of the queue
-        last_stream_key = process_manager.get_last_streamer_key()
-        BLOCKING = process_manager.get_is_blocking_last_streamer()
-        print(f"BLOCKING: {BLOCKING} LEAD_STREAM_KEY: {lead_stream_key} LAST_STREAM_KEY: {last_stream_key}")
-
-        if not lead_stream_key: #If there is no one else in stream queue, just start stream immediately
-            if last_stream_key:
-                if BLOCKING and last_stream_key == stream:
+        # Atomically check state and determine action
+        should_start_stream = False
+        with queue_lock:
+            with state_lock:
+                lead_stream_key = process_manager.stream_queue.lead_streamer()
+                last_stream_key = process_manager.last_stream_key
+                BLOCKING = process_manager.is_blocking_last_streamer
+                
+                logger.info(f"on_publish: stream={stream}, BLOCKING={BLOCKING}, LEAD={lead_stream_key}, LAST={last_stream_key}")
+                
+                # Case 1: Queue is empty - potentially start this stream immediately
+                if not lead_stream_key:
+                    # Check if this user was just blocked
+                    if last_stream_key and BLOCKING and last_stream_key == stream:
+                        logger.info(f"Blocking {stream} - recently kicked")
+                        return JSONResponse(status_code=401, content={"code": 0, "data": do_not_forward_stream})
                     
-                    return JSONResponse(status_code=401, content={"code": 0, "data": do_not_forward_stream})
-                else:
-                    process_manager.delete_last_streamer_key()
-                    if stream not in process_manager.stream_queue.get_stream_key_queue_list():
-                        process_manager.stream_queue.queue_client_stream(user)
-                        process_manager.start_stream(user)
-                        return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
+                    # Clear last streamer key if we're allowing them back
+                    if last_stream_key:
+                        process_manager.last_stream_key = None
+                    
+                    # Try to add to queue atomically
+                    was_added = process_manager.stream_queue.queue_client_stream_if_not_exists(user)
+                    if was_added:
+                        should_start_stream = True
                     else:
-                        print("Streamer already in queue")
+                        logger.info(f"Stream {stream} already in queue")
                         return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
-            else:
-                if stream not in process_manager.stream_queue.get_stream_key_queue_list():
-                    process_manager.stream_queue.queue_client_stream(user)
-                    process_manager.start_stream(user)
+                
+                # Case 2: This IS the lead streamer (reconnecting)
+                elif lead_stream_key == stream:
+                    logger.info(f"Lead streamer {stream} reconnecting")
                     return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
+                
+                # Case 3: Someone else is lead - join the queue
                 else:
-                    print("Streamer already in queue")
+                    was_added = process_manager.stream_queue.queue_client_stream_if_not_exists(user)
+                    if was_added:
+                        logger.info(f"Stream {stream} joining queue (lead: {lead_stream_key})")
+                    else:
+                        logger.info(f"Stream {stream} already in queue")
                     return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
-            
-        if lead_stream_key and lead_stream_key == stream:
+        
+        # Start stream OUTSIDE the locks (it does I/O operations)
+        if should_start_stream:
+            logger.info(f"Starting stream for {stream}")
+            process_manager.start_stream(user)
             return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
-
-        if lead_stream_key and lead_stream_key != stream: # Gotta wait in line
-            process_manager.stream_queue.queue_client_stream(user)
-            return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
-
-        print("Somehow got into an erroneous state in on_publish hook. Investigate...")
-        return JSONResponse(status_code=404, content={"code": 0, "data": do_not_forward_stream})
     elif action == 'on_record_begin':
         pass
     elif action == 'on_record_end':
