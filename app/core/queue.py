@@ -40,30 +40,34 @@ class StreamQueue(metaclass=Singleton):
         return get_user_by_stream_key(db,stream_key)
 
     def get_dj_name_queue_list(self):
-        dj_name_list_to_return = []
-        for user in self.stream_queue:
-            dj_name_list_to_return.append(user.dj_name)
+        with queue_lock:
+            dj_name_list_to_return = []
+            for user in self.stream_queue:
+                dj_name_list_to_return.append(user.dj_name)
 
-        return dj_name_list_to_return
+            return dj_name_list_to_return
     
     def get_stream_key_queue_list(self):
-        stream_key_list_to_return = []
-        for user in self.stream_queue:
-            stream_key_list_to_return.append(user.stream_key)
+        with queue_lock:
+            stream_key_list_to_return = []
+            for user in self.stream_queue:
+                stream_key_list_to_return.append(user.stream_key)
 
-        return stream_key_list_to_return
+            return stream_key_list_to_return
     
     def current_streamer(self):
-        if self.stream_queue:
-            return self.stream_queue[0]
-        else:
-            return None
+        with queue_lock:
+            if self.stream_queue:
+                return self.stream_queue[0]
+            else:
+                return None
 
     def lead_streamer(self):
-        if self.stream_queue:
-            return self.stream_queue[0].stream_key
-        else:
-            return None
+        with queue_lock:
+            if self.stream_queue:
+                return self.stream_queue[0].stream_key
+            else:
+                return None
 
         # save updated queue state to persistent store.
     def _write_persistent_state(self):
