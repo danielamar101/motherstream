@@ -13,13 +13,16 @@ logging.getLogger("httpcore.http11").setLevel(logging.WARNING)
 logging.getLogger("httpcore.connection").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-NGINX_HOST = os.environ.get("HOST")
-CONTROL_PORT = str(os.environ.get("STAT_PORT"))
+NGINX_HOST = os.environ.get("RTMP_RECORD_HOST", "localhost")  # Default to localhost if not set
+CONTROL_PORT = str(os.environ.get("STAT_PORT", "1985"))  # Default SRS API port
 
 # Oryx/SRS configuration from environment
 ORYX_HOST = os.getenv("ORYX_HOST", "localhost")
 ORYX_PORT = os.getenv("ORYX_PORT", "2022")
 ORYX_API_BASE = f"http://{ORYX_HOST}:{ORYX_PORT}/terraform/v1/mgmt"
+
+# Log configuration for debugging
+logger.info(f"SRS Stream Manager initialized - HOST: {NGINX_HOST}, PORT: {CONTROL_PORT}")
 
 async def rename_latest_recording(dj_name):
     RECORD_DIR = os.environ.get("RECORD_DIR", "/var/www/streams/stream-recordings")
@@ -52,28 +55,40 @@ async def rename_latest_recording(dj_name):
 
 async def record_stream(stream_key, dj_name, action):
     # action should be start/stop
-    await asyncio.sleep(5)  # Simulate delay
+
     params = {
         "app": "live",
         "name": stream_key,
     }
     response = None
+    
+    # Log the attempted connection for debugging
+    target_url = f"http://{NGINX_HOST}:{CONTROL_PORT}/control/record/{action}"
+    logger.debug(f"Attempting recording control: {action} to {target_url}")
+    
     try:
-        # Use an async HTTP library (httpx instead of requests)
-        async with httpx.AsyncClient() as client:
+        # Use an async HTTP library with timeout to prevent hanging
+        async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.post(
-                f"http://{NGINX_HOST}:{CONTROL_PORT}/control/record/{action}",
+                target_url,
                 params=params,
             )
         if response.status_code in [200, 204]:
-            logger.info(f"Successfully controlled recording: {action}")
+            logger.info(f"Successfully controlled recording: {action} for {dj_name}")
             if action == 'stop':
                 # Ensure rename_latest_recording is asynchronous or wrap in a thread pool
                 await rename_latest_recording(dj_name)
         else:
-            logger.info(f"Failure to control recording: {action}")
+            logger.warning(f"Recording control returned status {response.status_code} for action: {action}")
+    except httpx.ConnectError as e:
+        logger.error(f"Cannot connect to recording service at {target_url}: {e}")
+        logger.info(f"Recording failed but stream will continue without recording")
+    except httpx.TimeoutException as e:
+        logger.error(f"Timeout connecting to recording service: {e}")
+        logger.info(f"Recording failed but stream will continue without recording")
     except Exception as e:
-        logger.error(f"Exception controlling recording. Action: {action}. Exception {e}")
+        logger.error(f"Exception controlling recording. Action: {action}. Exception: {e}")
+        logger.info(f"Recording failed but stream will continue without recording")
 
     return response
 

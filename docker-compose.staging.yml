@@ -6,9 +6,11 @@ services:
     env_file: .env.staging
     volumes:
       - ./staging/stream-recordings:/var/www/streams/stream-recordings
+      - ./staging/logs:/app/logs
     networks:
       - staging-network
     dns:
+      - 127.0.0.11       # Docker's internal DNS (MUST BE FIRST for service name resolution)
       - 100.100.100.100  # Tailscale MagicDNS
       - 8.8.8.8          # Fallback DNS
 

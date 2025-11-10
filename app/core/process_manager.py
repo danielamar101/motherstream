@@ -83,15 +83,16 @@ class StreamManager(metaclass=Singleton):
         add_job(JobType.START_STREAM, payload={"stream_key": stream_key, "dj_name": dj_name})
         logger.info(f"Enqueued START_STREAM job for DJ: {dj_name} with key: {stream_key}")
 
-        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": False, "toggle_timespan": 5})
+        # Restart the GStreamer media source FIRST (before toggling on)
+        # This ensures the media source is refreshed before being enabled
+        add_job(JobType.RESTART_MEDIA_SOURCE, payload={"source_name": "GMOTHERSTREAM"})
+        logger.debug("Enqueued RESTART_MEDIA_SOURCE job for GMOTHERSTREAM")
+
+        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": False})
         logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer on)")
 
         add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "timer", "only_off": False})
         logger.debug("Enqueued TOGGLE_OBS_SRC job (timer on)")
-
-        # Enqueue job to restart the GStreamer media source
-        add_job(JobType.RESTART_MEDIA_SOURCE, payload={"source_name": "GMOTHERSTREAM"})
-        logger.debug("Enqueued RESTART_MEDIA_SOURCE job for GMOTHERSTREAM")
 
     def switch_stream(self):
         logger.info("Initiating stream switch...")
@@ -104,7 +105,7 @@ class StreamManager(metaclass=Singleton):
 
         logger.debug(f"Switching away from: {old_streamer.dj_name} ({old_streamer.stream_key})")
 
-        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True, "toggle_timespan": 5})
+        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True})
         logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer off)")
 
         # Stop recording old stream
@@ -245,7 +246,7 @@ class StreamManager(metaclass=Singleton):
         
         self.loading_message_thread = None
 
-        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "LOADING", "only_off": True, "toggle_timespan": 1})
+        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "LOADING", "only_off": True})
         logger.debug("Enqueued TOGGLE_OBS_SRC job (loading off)")
 
     # Background thread to manage the stream queue
@@ -265,7 +266,7 @@ class StreamManager(metaclass=Singleton):
             lead_stream = self.stream_queue.lead_streamer()
             logger.info(f'Lead Stream: {lead_stream}, Last Stream: {self.get_last_streamer_key()} State: {motherstream_state} PRIORITY: {self.priority_key} BLOCKING: {self.is_blocking_last_streamer}')
             if not lead_stream:
-                add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True, "toggle_timespan": 1})
+                add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True})
                 self.stop_loading_message_thread()
                 logger.info("Enqueued TOGGLE_OBS_SRC job (gstreamer off) due to no lead stream")
                 # Reset health checker when no stream is active

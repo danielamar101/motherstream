@@ -112,21 +112,18 @@ async def get_toggle():
 async def toggle_obs_source(
     source_name: str, 
     scene_name: str = "MOTHERSTREAM", 
-    toggle_timespan: float = 1.0, 
     only_off: bool = False
 ):
     """
     Manually toggle any OBS source for testing purposes.
     :param source_name: Name of the source to toggle
     :param scene_name: Name of the scene (default: MOTHERSTREAM)
-    :param toggle_timespan: Time to wait between off/on (default: 1.0 seconds)
     :param only_off: If True, only turn off the source (default: False)
     """
     try:
         obs_socket_manager_instance.toggle_obs_source(
             source_name=source_name,
             scene_name=scene_name,
-            toggle_timespan=toggle_timespan,
             only_off=only_off
         )
         
@@ -234,7 +231,6 @@ async def test_job_toggle(
     source_name: str = "GMOTHERSTREAM",
     scene_name: str = "MOTHERSTREAM", 
     only_off: bool = False,
-    toggle_timespan: float = 1.0
 ):
     """
     Test the job queue system by manually adding a toggle job.
@@ -246,7 +242,6 @@ async def test_job_toggle(
             "source_name": source_name,
             "scene_name": scene_name,
             "only_off": only_off,
-            "toggle_timespan": toggle_timespan
         })
         
         return {
@@ -256,7 +251,6 @@ async def test_job_toggle(
                 "source_name": source_name,
                 "scene_name": scene_name,
                 "only_off": only_off,
-                "toggle_timespan": toggle_timespan
             }
         }
     except Exception as e:
@@ -277,7 +271,6 @@ async def simulate_stream_switch():
         add_job(JobType.TOGGLE_OBS_SRC, payload={
             "source_name": "GMOTHERSTREAM", 
             "only_off": True, 
-            "toggle_timespan": 5
         })
         jobs_added.append("TOGGLE_OBS_SRC (GMOTHERSTREAM off)")
         

@@ -2,9 +2,11 @@ import threading
 import time
 import os
 import logging
+import csv
 from queue import Queue
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 
 from app.api.discord import send_discord_message
 from app.core.srs_stream_manager import async_record_stream, drop_stream_publisher
@@ -19,6 +21,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 # Track the last time an OBS job was executed to add delays
 last_obs_job_time = 0
 OBS_JOB_DELAY = 2.0  # Minimum seconds between OBS jobs to prevent crashes
+
+# Job timing tracking
+JOB_TIMING_FILE = "/app/logs/job_timings.csv"  # Docker container path with volume mount
+job_timing_lock = threading.Lock()
 
 class JobType(Enum):
     START_STREAM     = "start_stream"
@@ -36,8 +42,38 @@ class JobType(Enum):
 class Job:
     type: JobType
     payload: dict
+    enqueued_at: float = field(default_factory=time.time)
 
 job_queue: Queue[Job] = Queue()
+
+def write_job_timing(job_type: JobType, wait_time: float, execution_time: float, timestamp: str):
+    """Write job timing information to a CSV file."""
+    try:
+        with job_timing_lock:
+            # Ensure the logs directory exists
+            log_dir = os.path.dirname(JOB_TIMING_FILE)
+            os.makedirs(log_dir, exist_ok=True)
+            
+            # Check if file exists to determine if we need to write headers
+            file_exists = os.path.isfile(JOB_TIMING_FILE)
+            
+            with open(JOB_TIMING_FILE, 'a', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                
+                # Write header if file is new
+                if not file_exists:
+                    writer.writerow(['timestamp', 'job_type', 'wait_time_ms', 'execution_time_ms', 'total_time_ms'])
+                
+                # Write timing data
+                writer.writerow([
+                    timestamp,
+                    job_type.name,
+                    f"{wait_time * 1000:.2f}",  # Convert to milliseconds
+                    f"{execution_time * 1000:.2f}",  # Convert to milliseconds
+                    f"{(wait_time + execution_time) * 1000:.2f}"  # Total time
+                ])
+    except Exception as e:
+        logger.error(f"Failed to write job timing to file: {e}", exc_info=True)
 
 def is_obs_related_job(job_type: JobType) -> bool:
     """Check if a job type involves OBS websocket operations."""
@@ -59,10 +95,15 @@ def wait_for_obs_job_delay():
 
 def dispatch(job: Job):
     """Calls the appropriate function based on the job type."""
+    # Track timing
+    dispatch_start_time = time.time()
+    wait_time = dispatch_start_time - job.enqueued_at
+    timestamp = datetime.now().isoformat()
+    
     if job.type not in [JobType.CHECK_STREAM_HEALTH]:
-        logger.info(f"Dispatching job: {job.type.name} with payload: {job.payload}")
+        logger.info(f"Dispatching job: {job.type.name} with payload: {job.payload} (waited {wait_time*1000:.2f}ms)")
     else:
-        logger.debug(f"Dispatching job: {job.type.name}")
+        logger.debug(f"Dispatching job: {job.type.name} (waited {wait_time*1000:.2f}ms)")
         
     # Add delay before OBS-related jobs to prevent crashes
     if is_obs_related_job(job.type):
@@ -86,7 +127,6 @@ def dispatch(job: Job):
             source_name = job.payload.get("source_name")
             scene_name = job.payload.get("scene_name", "MOTHERSTREAM") # Default scene
             only_off = job.payload.get("only_off", False)
-            toggle_timespan = job.payload.get("toggle_timespan", 1) # Default timespan
             if source_name:
                 # Map specific source names if needed (e.g., "gstreamer" -> "GMOTHERSTREAM")
                 actual_source_name = source_name
@@ -105,7 +145,6 @@ def dispatch(job: Job):
                 obs_socket_manager_instance.toggle_obs_source(
                     source_name=actual_source_name,
                     scene_name=scene_name,
-                    toggle_timespan=toggle_timespan,
                     only_off=only_off
                 )
                 # Special case for timer - toggle text label too
@@ -113,7 +152,6 @@ def dispatch(job: Job):
                      obs_socket_manager_instance.toggle_obs_source(
                         source_name="TIME REMAINING",
                         scene_name=scene_name,
-                        toggle_timespan=toggle_timespan,
                         only_off=only_off
                     )
             else:
@@ -154,13 +192,11 @@ def dispatch(job: Job):
             # Flash the loading message - equivalent to toggle_loading_message_source
             scene_name = job.payload.get("scene_name", "MOTHERSTREAM")  # Default scene
             only_off = job.payload.get("only_off", False)
-            toggle_timespan = job.payload.get("toggle_timespan", 1.5)  # Default timespan from original code
             
             logger.debug("Flashing loading message...")
             obs_socket_manager_instance.toggle_obs_source(
                 source_name="LOADING",
                 scene_name=scene_name,
-                toggle_timespan=toggle_timespan,
                 only_off=only_off
             )
 
@@ -184,8 +220,19 @@ def dispatch(job: Job):
         else:
             # Consider logging an error or raising for unhandled job types
             logger.warning(f"Unhandled job type: {job.type}")
+        
+        # Record successful execution time
+        execution_time = time.time() - dispatch_start_time
+        write_job_timing(job.type, wait_time, execution_time, timestamp)
+        
+        if job.type not in [JobType.CHECK_STREAM_HEALTH]:
+            logger.info(f"Job {job.type.name} executed in {execution_time*1000:.2f}ms")
+        
     except Exception as e:
         logger.error(f"Error processing job {job.type.name}: {e}", exc_info=True)
+        # Still record timing even on failure
+        execution_time = time.time() - dispatch_start_time
+        write_job_timing(job.type, wait_time, execution_time, timestamp)
         # Optional: Implement retry logic here, e.g., re-queueing the job
         # if job.retries < MAX_RETRIES:
         #     job.retries += 1
@@ -200,6 +247,7 @@ def worker_loop():
         job = None # Ensure job is defined in the loop scope
         try:
             job = job_queue.get() # Blocks until a job is available
+            logger.info(f"Job queue contains {job_queue.qsize()} jobs: {[job.type.name for job in job_queue.queue]}")
             logger.debug(f"Worker processing job: {job.type.name}")
             dispatch(job)
         except Exception as e:
