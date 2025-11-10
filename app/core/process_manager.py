@@ -111,12 +111,14 @@ class StreamManager(metaclass=Singleton):
             logger.info("Initiating stream switch...")
 
             # 1. Atomically get and remove the current streamer from queue
+            old_streamer = None
             with queue_lock:
-                if not self.stream_queue.stream_queue:
+                if self.stream_queue.stream_queue:
+                    old_streamer = self.stream_queue.unqueue_client_stream()
+                else:
                     logger.warning("switch_stream called but queue is empty")
-                    return
-                old_streamer = self.stream_queue.unqueue_client_stream()
             
+            # Check if we actually got a streamer to switch from
             if not old_streamer:
                 logger.warning("switch_stream called but no current streamer to remove.")
                 return # Nothing to switch from
