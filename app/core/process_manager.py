@@ -5,7 +5,7 @@ import time
 import os
 import logging
 
-from ..lock_manager import lock as queue_lock
+from ..lock_manager import lock as queue_lock, state_lock
 from .time_manager import TimeManager
 # Import the global OBS instance instead of the class
 from ..obs import obs_socket_manager_instance
@@ -176,23 +176,34 @@ class StreamManager(metaclass=Singleton):
             self.stream_health_checker.reset()
 
     def delete_last_streamer_key(self):
-        self.last_stream_key = None
-    def set_last_stream_key(self,key):
-        self.last_stream_key = key
+        with state_lock:
+            self.last_stream_key = None
+    
+    def set_last_stream_key(self, key):
+        with state_lock:
+            self.last_stream_key = key
+    
     def get_last_streamer_key(self):
-        return self.last_stream_key
+        with state_lock:
+            return self.last_stream_key
     
     def get_priority_key(self):
-        return self.priority_key
+        with state_lock:
+            return self.priority_key
+    
     def set_priority_key(self, key):
-        self.priority_key = key
+        with state_lock:
+            self.priority_key = key
 
 
     def get_is_blocking_last_streamer(self):
-        return self.is_blocking_last_streamer
+        with state_lock:
+            return self.is_blocking_last_streamer
+    
     def toggle_block_previous_client(self):
-        self.is_blocking_last_streamer = not self.is_blocking_last_streamer
-        logger.info(f"Toggle last streamer block. Will block previously kicked client: {self.is_blocking_last_streamer}")
+        with state_lock:
+            self.is_blocking_last_streamer = not self.is_blocking_last_streamer
+            logger.info(f"Toggle last streamer block. Will block previously kicked client: {self.is_blocking_last_streamer}")
 
     def modify_swap_time(self,time, reset_time=False):
         self.time_manager.modify_swap_interval(interval=time,reset_time=reset_time)
