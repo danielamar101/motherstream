@@ -14,7 +14,13 @@ tests/
 │   └── test_rtmp_endpoints.py # RTMP endpoint race condition tests
 ├── stress/                     # High-load stress tests
 │   └── test_concurrent_load.py # Concurrent load and stress tests
-├── e2e/                        # End-to-end tests (placeholder)
+├── e2e/                        # End-to-end tests with real RTMP streams
+│   ├── motherstream-stress-test.sh  # Main E2E stress test script
+│   ├── quick-test.sh           # Fast setup verification
+│   ├── scripts/                # Helper scripts
+│   │   └── download-test-video.sh
+│   ├── videos/                 # Test video files
+│   └── logs/                   # Test results and logs
 └── conftest.py                # Shared fixtures and configuration
 ```
 
@@ -49,6 +55,10 @@ pytest -m stress --timeout=120
 
 # Run without stress tests
 pytest -m "not stress"
+
+# E2E tests (real RTMP streams)
+cd e2e
+./motherstream-stress-test.sh simultaneous
 ```
 
 ### Run Specific Test Files
@@ -105,7 +115,7 @@ pytest -x
 
 ## 🎯 Test Categories
 
-### Unit Tests (`@pytest.mark.unit`)
+### Unit Tests (`@pytest.mark.unit`) - Python/pytest
 
 Test individual components in isolation:
 - Lock behavior (reentrant, mutual exclusion)
@@ -115,7 +125,7 @@ Test individual components in isolation:
 
 **Expected Coverage**: 85%+
 
-### Integration Tests (`@pytest.mark.integration`)
+### Integration Tests (`@pytest.mark.integration`) - Python/pytest
 
 Test components working together:
 - Concurrent RTMP endpoint calls
@@ -125,7 +135,7 @@ Test components working together:
 
 **Expected Coverage**: All critical race condition paths
 
-### Stress Tests (`@pytest.mark.stress`)
+### Stress Tests (`@pytest.mark.stress`) - Python/pytest
 
 Test system under high load:
 - 100+ concurrent requests
@@ -134,6 +144,35 @@ Test system under high load:
 - Queue stress testing
 
 **Note**: Stress tests take longer and are marked with longer timeouts.
+
+### E2E Tests - Bash/RTMP Streams
+
+Test the complete system with **real RTMP video streams**:
+
+- Simultaneous connections (all users at once)
+- Orderly queue rotation (sequential 1-min streams)
+- Chaos mode (random timings and reconnects)
+- Rapid disconnect/reconnect cycles
+- Queue drain (build up, then empty)
+
+**Setup & Run:**
+
+```bash
+cd e2e
+
+# Download test video (first time only)
+./scripts/download-test-video.sh
+
+# Quick test (30 seconds)
+./quick-test.sh
+
+# Full test suite (15-20 minutes)
+./motherstream-stress-test.sh all
+```
+
+**See:** `e2e/README.md` for complete documentation
+
+**Expected Coverage**: Real-world validation of all race condition fixes
 
 ## 🔍 Test Markers
 
