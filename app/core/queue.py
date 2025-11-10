@@ -96,15 +96,20 @@ class StreamQueue(metaclass=Singleton):
     
     def remove_client_with_stream_key(self,stream_key):
         try:
+            removed = False
             with queue_lock:
                 # Find and remove the user with matching stream key
                 for i, user in enumerate(self.stream_queue):
                     if user.stream_key == stream_key:
                         self.stream_queue.pop(i)
-                        self._write_persistent_state()
+                        removed = True
                         logger.debug(f"Successfully removed client with stream key {stream_key} from queue")
-                        return
-                logger.debug(f"No client found with stream key {stream_key} in queue")
+                        break
+                if not removed:
+                    logger.debug(f"No client found with stream key {stream_key} in queue")
+            
+            if removed:
+                self._write_persistent_state()
         except Exception as e:
             logger.exception(f"Error removing client from queue: {e}")
 

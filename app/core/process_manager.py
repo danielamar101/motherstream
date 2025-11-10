@@ -56,6 +56,9 @@ class StreamManager(metaclass=Singleton):
         # Stream switching lock - prevent concurrent switch_stream calls
         self.switching_lock = threading.Lock()
         
+        # Track if we've already enqueued turn-off jobs when queue becomes empty
+        self.obs_turned_off_for_empty_queue = False
+        
         # Stream health monitoring - Use environment variables for RTMP configuration
         rtmp_host = os.getenv("RTMP_HOST", "127.0.0.1")
         rtmp_port = os.getenv("RTMP_PORT", "1935")
@@ -79,6 +82,9 @@ class StreamManager(metaclass=Singleton):
         self.set_priority_key(None)
         self.current_dj_name = dj_name
         self.time_manager = TimeManager()
+        
+        # Reset flag when stream starts
+        self.obs_turned_off_for_empty_queue = False
         
         # Reset stream health checker for new stream
         self.stream_health_checker.reset()
@@ -304,12 +310,23 @@ class StreamManager(metaclass=Singleton):
             lead_stream = self.stream_queue.lead_streamer()
             logger.info(f'Lead Stream: {lead_stream}, Last Stream: {self.get_last_streamer_key()} State: {motherstream_state} PRIORITY: {self.get_priority_key()} BLOCKING: {self.get_is_blocking_last_streamer()}')
             if not lead_stream:
-                add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True})
-                self.stop_loading_message_thread()
-                logger.info("Enqueued TOGGLE_OBS_SRC job (gstreamer off) due to no lead stream")
+                # Only enqueue turn-off jobs once when queue becomes empty
+                if not self.obs_turned_off_for_empty_queue:
+                    # Only turn off GMOTHERSTREAM if a stream switch is not currently in progress
+                    # This prevents a race condition where we turn off the source right after
+                    # a new stream has just turned it on
+                    if not self.switching_lock.locked():
+                        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True})
+                        self.stop_loading_message_thread()
+                        logger.info("Enqueued TOGGLE_OBS_SRC job (gstreamer off) due to no lead stream")
+                        self.obs_turned_off_for_empty_queue = True
+                    else:
+                        logger.debug("Skipping GMOTHERSTREAM turn off - stream switch in progress")
                 # Reset health checker when no stream is active
                 self.stream_health_checker.reset()
             else:
+                # Reset flag when we have a lead stream
+                self.obs_turned_off_for_empty_queue = False
                 # Check stream health when there's an active stream
                 add_job(JobType.CHECK_STREAM_HEALTH, payload={
                     "stream_url": self.stream_health_checker.stream_url,
