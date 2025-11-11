@@ -18,6 +18,7 @@ class StreamHealthChecker:
         self.first_failure_time: Optional[float] = None
         self.last_check_time: Optional[float] = None
         self.is_healthy = True
+        self.is_checking = False  # Flag to prevent concurrent health checks
         self.lock = threading.Lock()
         
     def check_stream_health(self) -> bool:
@@ -25,6 +26,13 @@ class StreamHealthChecker:
         Check if the RTMP stream is healthy using ffprobe.
         Returns True if healthy, False if unhealthy.
         """
+        # Check if a health check is already in progress
+        with self.lock:
+            if self.is_checking:
+                logger.debug(f"Health check already in progress for {self.stream_url}, skipping")
+                return self.is_healthy
+            self.is_checking = True
+        
         try:
             # Use ffprobe to check if the stream is accessible
             # -v error: show only errors
@@ -42,7 +50,7 @@ class StreamHealthChecker:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=10  # Overall timeout for the command
+                timeout=3  # Reduced timeout from 10s to 3s for faster failure detection
             )
             
             # If ffprobe succeeds and returns stream info, check for video stream
@@ -88,6 +96,10 @@ class StreamHealthChecker:
         except Exception as e:
             logger.error(f"Unexpected error checking stream health for {self.stream_url}: {e}")
             return self._handle_failure()
+        finally:
+            # Always clear the checking flag when done
+            with self.lock:
+                self.is_checking = False
     
     def _handle_failure(self) -> bool:
         """Handle a health check failure and update internal state."""
@@ -132,4 +144,5 @@ class StreamHealthChecker:
             self.is_healthy = True
             self.first_failure_time = None
             self.last_check_time = None
+            self.is_checking = False  # Reset checking flag
             logger.info(f"Health checker reset for stream {self.stream_url}") 
