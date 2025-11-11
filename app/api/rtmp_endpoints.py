@@ -44,7 +44,8 @@ async def on_publish(
         "addr": addr,
         "param": param
     }
-    print(request_obj)
+    # RTMP hook logging disabled for cleaner logs
+    # print(request_obj)
 
     record_stream = os.getenv('RECORD_STREAM')
     forward_stream = {
@@ -60,7 +61,8 @@ async def on_publish(
         forward_stream["urls"].append(f"rtmp://{RTMP_RECORD_HOST}:{RTMP_RECORD_PORT}/live/{stream}") #nginx record path
 
     if app == 'motherstream':
-        print("Motherstream app. Doing nothing.")
+        # RTMP hook logging disabled for cleaner logs
+        # print("Motherstream app. Doing nothing.")
         return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
 
 
@@ -82,7 +84,19 @@ async def on_publish(
                 if PRIORITY and PRIORITY == stream:
                     logger.info(f"Priority streamer {stream} disconnecting")
                     process_manager.priority_key = None
-                    return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
+                    
+                    # Check if this priority streamer is also the lead streamer
+                    if stream == lead_stream_key:
+                        logger.info(f"Priority streamer {stream} is the lead - will switch to next streamer")
+                        should_switch = True
+                    else:
+                        # Hide GStreamer source and disable health checks when priority streamer disconnects
+                        # but they're not the lead (reconnection case)
+                        from app.core.worker import add_job, JobType
+                        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True})
+                        process_manager.stream_health_checker.disable()
+                        logger.info(f"Disabled health checks and hid GStreamer source for disconnected priority streamer {stream}")
+                        return JSONResponse(status_code=200, content={"code": 0, "data": do_not_forward_stream})
                 
                 # Case 3: Lead streamer disconnecting - need to switch
                 if stream and stream == lead_stream_key:
@@ -148,6 +162,14 @@ async def on_publish(
                 # Case 2: This IS the lead streamer (reconnecting)
                 elif lead_stream_key == stream:
                     logger.info(f"Lead streamer {stream} reconnecting")
+                    # Re-enable health checks and show GStreamer source when lead streamer reconnects
+                    from app.core.worker import add_job, JobType
+                    if os.getenv("ENV") == "prod":
+                        rtmp_url = f"rtmp://{os.getenv('DOMAIN')}:{os.getenv('RTMP_PORT')}/live/{stream}"
+                    else:
+                        rtmp_url = f"rtmp://{os.getenv('DOMAIN')}:{os.getenv('PUBLIC_RTMP_PORT')}/staging/live/{stream}"
+                    process_manager.stream_health_checker.update_stream_url(rtmp_url)
+                    logger.info(f"Re-enabled health checks for reconnected lead streamer {stream}")
                     return JSONResponse(status_code=200, content={"code": 0, "data": forward_stream})
                 
                 # Case 3: Someone else is lead - join the queue

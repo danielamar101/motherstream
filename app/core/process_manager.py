@@ -59,13 +59,15 @@ class StreamManager(metaclass=Singleton):
         # Track if we've already enqueued turn-off jobs when queue becomes empty
         self.obs_turned_off_for_empty_queue = False
         
-        # Stream health monitoring - Use environment variables for RTMP configuration
-        rtmp_host = os.getenv("RTMP_HOST", "127.0.0.1")
-        rtmp_port = os.getenv("RTMP_PORT", "1935")
+        # Stream health monitoring - monitors individual streamer URLs (not forwarded stream)
+        # Initial URL is a placeholder; will be updated when first stream starts
         self.stream_health_checker = StreamHealthChecker(
-            stream_url=f"rtmp://{rtmp_host}:{rtmp_port}/motherstream/live",
-            unhealthy_threshold_seconds=30
+            stream_url="rtmp://placeholder/initial",
+            unhealthy_threshold_seconds=10
         )
+        
+        # Track last logged state to reduce log spam
+        self._last_logged_state = None
 
     def set_song_data(self,song_data):
         self.song_data = song_data
@@ -85,9 +87,6 @@ class StreamManager(metaclass=Singleton):
         
         # Reset flag when stream starts
         self.obs_turned_off_for_empty_queue = False
-        
-        # Reset stream health checker for new stream
-        self.stream_health_checker.reset()
 
         # NEW APPROACH: Create a fresh GStreamer source with the new stream's RTMP URL
         # This avoids timestamp inconsistencies and ensures proper buffering before visibility
@@ -96,6 +95,10 @@ class StreamManager(metaclass=Singleton):
             rtmp_url = f"rtmp://{os.getenv("DOMAIN")}:{os.getenv("RTMP_PORT")}/live/{stream_key}"
         else:
             rtmp_url = f"rtmp://{os.getenv("DOMAIN")}:{os.getenv("PUBLIC_RTMP_PORT")}/staging/live/{stream_key}"
+        
+        # Update health checker to monitor this specific streamer's URL
+        # (not the old forwarded /motherstream/live endpoint)
+        self.stream_health_checker.update_stream_url(rtmp_url)
         
         add_job(JobType.SWITCH_GSTREAMER_SOURCE, payload={
             "rtmp_url": rtmp_url,
@@ -163,8 +166,7 @@ class StreamManager(metaclass=Singleton):
             self.time_manager = None # Reset timer since the stream ended
             logger.debug(f"Updated internal state: last_stream_key={old_streamer.stream_key}, time_manager reset.")
 
-            # Reset stream health checker when switching streams
-            self.stream_health_checker.reset()
+            # Note: Health checker will be updated in start_stream() with new streamer's URL
 
             # 2. Atomically get the next streamer (if any)
             with queue_lock:
@@ -176,10 +178,6 @@ class StreamManager(metaclass=Singleton):
                 self.start_stream(current_streamer)
                 logger.debug(f"Called start_stream for {current_streamer.dj_name}")
 
-                # Enqueue job to kick the *new* streamer to force re-init/prioritize
-                add_job(JobType.KICK_PUBLISHER, payload={"stream_key": current_streamer.stream_key})
-                logger.debug(f"Enqueued KICK_PUBLISHER job for new streamer {current_streamer.stream_key}")
-
                 # Prioritize new streamer (Internal state)
                 self.set_priority_key(current_streamer.stream_key)
                 logger.debug(f"Set priority key to {current_streamer.stream_key}")
@@ -187,9 +185,17 @@ class StreamManager(metaclass=Singleton):
                 logger.info("No next streamer in queue.")
 
                 self.set_priority_key(None)
+                
+                # Disable health checking when queue is empty
+                self.stream_health_checker.disable()
 
                 add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "timer", "only_off": True})
                 logger.debug("Enqueued TOGGLE_OBS_SRC job (timer off)")
+                
+                # Remove the GStreamer source when queue is empty
+                if self.obs_socket_manager.current_gstreamer_source:
+                    add_job(JobType.REMOVE_GSTREAMER_SOURCE, payload={"source_name": self.obs_socket_manager.current_gstreamer_source})
+                    logger.info(f"Enqueued REMOVE_GSTREAMER_SOURCE job for {self.obs_socket_manager.current_gstreamer_source}")
 
             logger.info("Stream switch processing complete (jobs enqueued).")
         
@@ -211,13 +217,10 @@ class StreamManager(metaclass=Singleton):
             
             logger.debug("Switching stream due to unhealthy stream")
             self.switch_stream()
-
-            # Reset the health checker
-            self.stream_health_checker.reset()
+            # Note: Health checker will be updated in start_stream() with new streamer's URL
         else:
             logger.warning("Output stream unhealthy but no current streamer found")
-            # Reset the health checker anyway
-            self.stream_health_checker.reset()
+            # Health checker will be updated when next stream starts
 
     def delete_last_streamer_key(self):
         with state_lock:
@@ -319,7 +322,27 @@ class StreamManager(metaclass=Singleton):
 
             motherstream_state = self.stream_queue.get_stream_key_queue_list()
             lead_stream = self.stream_queue.lead_streamer()
-            logger.info(f'Lead Stream: {lead_stream}, Last Stream: {self.get_last_streamer_key()} State: {motherstream_state} PRIORITY: {self.get_priority_key()} BLOCKING: {self.get_is_blocking_last_streamer()}')
+            
+            # Create compact state representation
+            current_state = {
+                'lead': lead_stream,
+                'last': self.get_last_streamer_key(),
+                'queue_len': len(motherstream_state),
+                'priority': self.get_priority_key(),
+                'blocking': self.get_is_blocking_last_streamer()
+            }
+            
+            # Only log when state changes (more informative, less spam)
+            if current_state != self._last_logged_state:
+                queue_str = f"[{', '.join(motherstream_state[:3])}{'...' if len(motherstream_state) > 3 else ''}]"
+                logger.info(
+                    f"🎵 Queue: Lead={lead_stream or 'None'} | "
+                    f"Queue({len(motherstream_state)})={queue_str} | "
+                    f"{'🔒 BLOCKING' if current_state['blocking'] else '✓ Open'} | "
+                    f"{'⭐ Priority: ' + current_state['priority'] if current_state['priority'] else '✓ No priority'}"
+                )
+                self._last_logged_state = current_state
+            
             if not lead_stream:
                 # Only enqueue turn-off jobs once when queue becomes empty
                 if not self.obs_turned_off_for_empty_queue:
@@ -330,6 +353,12 @@ class StreamManager(metaclass=Singleton):
                         add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True})
                         self.stop_loading_message_thread()
                         logger.info("Enqueued TOGGLE_OBS_SRC job (gstreamer off) due to no lead stream")
+                        
+                        # Remove the GStreamer source when queue is empty
+                        if self.obs_socket_manager.current_gstreamer_source:
+                            add_job(JobType.REMOVE_GSTREAMER_SOURCE, payload={"source_name": self.obs_socket_manager.current_gstreamer_source})
+                            logger.info(f"Enqueued REMOVE_GSTREAMER_SOURCE job for {self.obs_socket_manager.current_gstreamer_source}")
+                        
                         self.obs_turned_off_for_empty_queue = True
                     else:
                         logger.debug("Skipping GMOTHERSTREAM turn off - stream switch in progress")
@@ -338,14 +367,19 @@ class StreamManager(metaclass=Singleton):
             else:
                 # Reset flag when we have a lead stream
                 self.obs_turned_off_for_empty_queue = False
-                # Check stream health when there's an active stream
-                add_job(JobType.CHECK_STREAM_HEALTH, payload={
-                    "stream_url": self.stream_health_checker.stream_url,
-                    "health_checker": self.stream_health_checker
-                })
                 
-                # Check if stream has been unhealthy for too long
-                if self.stream_health_checker.is_unhealthy_for_threshold():
+                # Only enqueue health check if:
+                # 1. Health checking is enabled (stream is active and connected)
+                # 2. No check is already in progress
+                # This prevents queue buildup and checks on disconnected streams
+                if self.stream_health_checker.enabled and not self.stream_health_checker.is_check_in_progress():
+                    add_job(JobType.CHECK_STREAM_HEALTH, payload={
+                        "stream_url": self.stream_health_checker.stream_url,
+                        "health_checker": self.stream_health_checker
+                    })
+                
+                # Check if stream has been unhealthy for too long (only if enabled)
+                if self.stream_health_checker.enabled and self.stream_health_checker.is_unhealthy_for_threshold():
                     self.handle_unhealthy_stream()
             
             # oryx_state = get_stream_state()

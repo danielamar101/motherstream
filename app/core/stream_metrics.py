@@ -58,6 +58,11 @@ class StreamHealthSnapshot:
     
     # Additional context
     poll_count: int  # Which poll this is
+    
+    # Enhanced visibility tracking (integrated from obs-stream-switch-monitor.py)
+    # These have defaults so must come after non-default fields
+    visibility_problematic: bool = False  # True if visible while not PLAYING
+    visibility_issue_type: Optional[str] = None  # e.g., "VISIBLE_WHILE_BUFFERING"
 
 
 class StreamHealthMonitor:
@@ -106,6 +111,10 @@ class StreamHealthMonitor:
         # Reference to OBS manager (will be set externally)
         self.obs_manager = None
         
+        # Track last logged status to avoid log spam
+        self.last_health_status = None  # Track last health score category
+        self.last_pipeline_status = None  # Track last pipeline health status
+        
     def start_monitoring(self, source_name: str, rtmp_url: str, scene_name: str = "MOTHERSTREAM"):
         """Start monitoring a specific source."""
         if self.monitoring_active:
@@ -137,7 +146,8 @@ class StreamHealthMonitor:
                 'is_visible', 'scene_name', 'obs_fps', 'dropped_frames',
                 'buffer_level', 'gstreamer_state', 'pipeline_healthy',
                 'pipeline_warnings', 'frame_drop_rate', 'health_score', 
-                'issues', 'poll_count'
+                'issues', 'poll_count',
+                'visibility_problematic', 'visibility_issue_type'  # NEW: visibility sync tracking
             ]
         )
         self.csv_writer.writeheader()
@@ -152,6 +162,10 @@ class StreamHealthMonitor:
         self.media_time_history.clear()
         self.fps_history.clear()
         self.stall_count = 0
+        
+        # Reset status tracking to avoid log spam
+        self.last_health_status = None
+        self.last_pipeline_status = None
         
         # Start monitoring thread
         self.monitor_thread = threading.Thread(
@@ -234,6 +248,28 @@ class StreamHealthMonitor:
             except Exception as e:
                 logger.debug(f"Could not check visibility: {e}")
             
+            # Detect problematic visibility (integrated from obs-stream-switch-monitor.py)
+            # Problem: Source is visible but media is not PLAYING (causes frozen frames!)
+            visibility_problematic = False
+            visibility_issue_type = None
+            
+            if is_visible and media_state:
+                if media_state == "OBS_MEDIA_STATE_BUFFERING":
+                    visibility_problematic = True
+                    visibility_issue_type = "VISIBLE_WHILE_BUFFERING"
+                elif media_state == "OBS_MEDIA_STATE_STOPPED":
+                    visibility_problematic = True
+                    visibility_issue_type = "VISIBLE_WHILE_STOPPED"
+                elif media_state == "OBS_MEDIA_STATE_PAUSED":
+                    visibility_problematic = True
+                    visibility_issue_type = "VISIBLE_WHILE_PAUSED"
+                elif media_state == "OBS_MEDIA_STATE_ERROR":
+                    visibility_problematic = True
+                    visibility_issue_type = "VISIBLE_WHILE_ERROR"
+                elif media_state not in ["OBS_MEDIA_STATE_PLAYING", None]:
+                    visibility_problematic = True
+                    visibility_issue_type = f"VISIBLE_WHILE_{media_state.replace('OBS_MEDIA_STATE_', '')}"
+            
             # Get OBS stats (if available)
             obs_fps = None
             dropped_frames = None
@@ -262,7 +298,8 @@ class StreamHealthMonitor:
             
             # Calculate health score and detect issues
             health_score, issues = self._calculate_health(
-                media_state, is_visible, obs_fps, dropped_frames, gstreamer_analysis, choppiness_indicators
+                media_state, is_visible, obs_fps, dropped_frames, gstreamer_analysis, choppiness_indicators,
+                visibility_problematic, visibility_issue_type
             )
             
             snapshot = StreamHealthSnapshot(
@@ -284,7 +321,9 @@ class StreamHealthMonitor:
                 frame_drop_rate=gstreamer_analysis['frame_drop_rate'],
                 health_score=health_score,
                 issues=issues,
-                poll_count=self.poll_count
+                poll_count=self.poll_count,
+                visibility_problematic=visibility_problematic,
+                visibility_issue_type=visibility_issue_type
             )
             
             return snapshot
@@ -431,7 +470,9 @@ class StreamHealthMonitor:
         obs_fps: Optional[float],
         dropped_frames: Optional[int],
         gstreamer_analysis: Dict[str, Any],
-        choppiness_indicators: List[str]
+        choppiness_indicators: List[str],
+        visibility_problematic: bool = False,
+        visibility_issue_type: Optional[str] = None
     ) -> tuple[float, List[str]]:
         """
         Calculate overall health score (0-100) and list issues.
@@ -462,6 +503,14 @@ class StreamHealthMonitor:
         if is_visible and media_state not in ["OBS_MEDIA_STATE_PLAYING", None]:
             score -= 25
             issues.append("VISIBLE_NOT_PLAYING")
+        
+        # Problematic visibility detection (THIS IS THE FROZEN FRAME ISSUE!)
+        # Integrated from obs-stream-switch-monitor.py - detects when source becomes
+        # visible before it's ready, which causes frozen/black frames during switches
+        if visibility_problematic:
+            score -= 40  # Major penalty - this is a critical issue!
+            issues.append(visibility_issue_type or "VISIBLE_NOT_READY")
+            # Note: This warning is now logged in _record_snapshot only when status changes
         
         # FPS checks
         if obs_fps is not None:
@@ -517,19 +566,45 @@ class StreamHealthMonitor:
             self.csv_writer.writerow(row)
             self.csv_file_handle.flush()
         
-        # Log significant issues
-        if snapshot.health_score < 70:
-            logger.warning(
-                f"Stream health degraded: {snapshot.source_name} "
-                f"score={snapshot.health_score:.1f} issues={snapshot.issues}"
-            )
+        # Categorize health status for change detection
+        if snapshot.health_score >= 90:
+            health_status = "excellent"
+        elif snapshot.health_score >= 70:
+            health_status = "good"
+        elif snapshot.health_score >= 50:
+            health_status = "degraded"
+        else:
+            health_status = "poor"
         
-        # Log GStreamer warnings
-        if snapshot.pipeline_warnings and not snapshot.pipeline_healthy:
-            logger.warning(
-                f"GStreamer pipeline issues: {snapshot.source_name} "
-                f"state={snapshot.gstreamer_state} warnings={snapshot.pipeline_warnings}"
-            )
+        # Only log health issues when status changes or on first poll
+        if health_status != self.last_health_status:
+            if snapshot.health_score < 70:
+                logger.warning(
+                    f"Stream health {health_status}: {snapshot.source_name} "
+                    f"score={snapshot.health_score:.1f} issues={snapshot.issues}"
+                )
+            elif self.last_health_status and self.last_health_status in ["degraded", "poor"]:
+                # Log when health improves
+                logger.info(
+                    f"Stream health improved: {snapshot.source_name} "
+                    f"score={snapshot.health_score:.1f}"
+                )
+            self.last_health_status = health_status
+        
+        # Only log pipeline warnings when they change or appear for the first time
+        pipeline_status = f"{snapshot.pipeline_healthy}:{','.join(sorted(snapshot.pipeline_warnings))}"
+        if pipeline_status != self.last_pipeline_status:
+            if snapshot.pipeline_warnings and not snapshot.pipeline_healthy:
+                logger.warning(
+                    f"GStreamer pipeline issues: {snapshot.source_name} "
+                    f"state={snapshot.gstreamer_state} warnings={snapshot.pipeline_warnings}"
+                )
+            elif self.last_pipeline_status and not self.last_pipeline_status.startswith("True"):
+                # Log when pipeline recovers
+                logger.info(
+                    f"GStreamer pipeline recovered: {snapshot.source_name} state={snapshot.gstreamer_state}"
+                )
+            self.last_pipeline_status = pipeline_status
     
     def _generate_summary_report(self):
         """Generate a human-readable summary report."""

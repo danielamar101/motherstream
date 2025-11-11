@@ -38,6 +38,7 @@ class JobType(Enum):
     FLASH_LOADING_MESSAGE = "flash_loading_message"
     CHECK_STREAM_HEALTH = "check_stream_health"
     SWITCH_GSTREAMER_SOURCE = "switch_gstreamer_source"  # New: Dynamic source creation
+    REMOVE_GSTREAMER_SOURCE = "remove_gstreamer_source"  # Remove GStreamer source when queue is empty
 
 @dataclass
 class Job:
@@ -82,7 +83,8 @@ def is_obs_related_job(job_type: JobType) -> bool:
         JobType.TOGGLE_OBS_SRC, 
         JobType.RESTART_MEDIA_SOURCE, 
         JobType.FLASH_LOADING_MESSAGE,
-        JobType.SWITCH_GSTREAMER_SOURCE
+        JobType.SWITCH_GSTREAMER_SOURCE,
+        JobType.REMOVE_GSTREAMER_SOURCE
     }
     return job_type in obs_job_types
 
@@ -106,10 +108,9 @@ def dispatch(job: Job):
     wait_time = dispatch_start_time - job.enqueued_at
     timestamp = datetime.now().isoformat()
     
-    if job.type not in [JobType.CHECK_STREAM_HEALTH]:
+    # Only log dispatch for non-health-check jobs (reduces noise)
+    if job.type != JobType.CHECK_STREAM_HEALTH:
         logger.info(f"Dispatching job: {job.type.name} with payload: {job.payload} (waited {wait_time*1000:.2f}ms)")
-    else:
-        logger.debug(f"Dispatching job: {job.type.name} (waited {wait_time*1000:.2f}ms)")
         
     # Add delay before OBS-related jobs to prevent crashes
     if is_obs_related_job(job.type):
@@ -212,14 +213,14 @@ def dispatch(job: Job):
             health_checker = job.payload.get("health_checker")
             
             if stream_url and health_checker:
-                logger.debug(f"Checking health for stream: {stream_url}")
+                # Health checker will log problems internally
                 is_healthy = health_checker.check_stream_health()
                 
+                # Only log if stream is unhealthy with details
                 if not is_healthy:
                     unhealthy_duration = health_checker.get_unhealthy_duration()
-                    logger.warning(f"Stream {stream_url} unhealthy for {unhealthy_duration:.1f}s")
-                else:
-                    logger.debug(f"Stream {stream_url} is healthy")
+                    logger.warning(f"⚠️  Stream unhealthy for {unhealthy_duration:.1f}s | Threshold: 30s")
+                # Healthy streams don't log - reduces noise
             else:
                 logger.warning("CHECK_STREAM_HEALTH job missing 'stream_url' or 'health_checker' in payload")
 
@@ -240,6 +241,22 @@ def dispatch(job: Job):
                     logger.error("Failed to switch to new GStreamer source")
             else:
                 logger.warning("SWITCH_GSTREAMER_SOURCE job missing 'rtmp_url' in payload")
+
+        elif job.type == JobType.REMOVE_GSTREAMER_SOURCE:
+            # Remove the current GStreamer source when queue is empty
+            source_name = job.payload.get("source_name")
+            
+            if source_name:
+                logger.info(f"Removing GStreamer source: {source_name}")
+                success = obs_socket_manager_instance.remove_source(source_name)
+                if success:
+                    logger.info(f"Successfully removed GStreamer source: {source_name}")
+                    # Clear the tracked source name
+                    obs_socket_manager_instance.current_gstreamer_source = None
+                else:
+                    logger.error(f"Failed to remove GStreamer source: {source_name}")
+            else:
+                logger.warning("REMOVE_GSTREAMER_SOURCE job missing 'source_name' in payload")
 
         else:
             # Consider logging an error or raising for unhandled job types
@@ -271,8 +288,13 @@ def worker_loop():
         job = None # Ensure job is defined in the loop scope
         try:
             job = job_queue.get() # Blocks until a job is available
-            logger.info(f"Job queue contains {job_queue.qsize()} jobs: {[job.type.name for job in job_queue.queue]}")
-            logger.debug(f"Worker processing job: {job.type.name}")
+            queue_size = job_queue.qsize()
+            # Only log queue status if there are pending jobs (reduces noise)
+            if queue_size > 0:
+                logger.info(f"📋 Job queue has {queue_size} pending: {[j.type.name for j in list(job_queue.queue)[:5]]}")
+            # Only log processing for non-health-check jobs
+            if job.type != JobType.CHECK_STREAM_HEALTH:
+                logger.debug(f"Worker processing job: {job.type.name}")
             dispatch(job)
         except Exception as e:
             # Catch unexpected errors during job retrieval or dispatch handling
@@ -300,5 +322,7 @@ logger.info("Worker thread initialized and dispatched.")
 def add_job(job_type: JobType, payload: dict):
     """Adds a job to the central queue."""
     new_job = Job(type=job_type, payload=payload)
-    logger.debug(f"Enqueuing job: {new_job.type.name}")
+    # Only log non-health-check jobs to reduce noise
+    if job_type != JobType.CHECK_STREAM_HEALTH:
+        logger.debug(f"Enqueuing job: {new_job.type.name}")
     job_queue.put(new_job)

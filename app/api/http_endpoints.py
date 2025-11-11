@@ -1,10 +1,12 @@
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.templating import Jinja2Templates
+import logging
 
 from app.core.time_manager import TimeManager
 from app.obs import obs_socket_manager_instance
 
+logger = logging.getLogger(__name__)
 templates = Jinja2Templates(directory="static")
 
 from main import process_manager
@@ -360,26 +362,90 @@ async def get_source_z_offset():
 async def get_current_stream_health():
     """
     Get the current health snapshot of the monitored stream.
-    Provides detailed metrics for diagnosing playback issues.
+    Provides detailed metrics for diagnosing playback issues including
+    real-time visibility/playback state synchronization detection.
+    
+    This endpoint integrates monitoring from obs-stream-switch-monitor.py
+    to detect frozen frames caused by sources becoming visible before ready.
     """
     try:
         from app.core.stream_metrics import stream_health_monitor
+        from app.obs import obs_socket_manager_instance
         
         health = stream_health_monitor.get_current_health()
+        
+        # Get current GStreamer source info
+        current_source = obs_socket_manager_instance.current_gstreamer_source
+        
+        # Real-time visibility tracking (from obs-stream-switch-monitor.py)
+        visibility_state = None
+        problematic_state = False
+        
+        if current_source:
+            try:
+                # Get real-time visibility and media state
+                is_visible = obs_socket_manager_instance.is_source_visible(
+                    current_source, 
+                    "MOTHERSTREAM"
+                )
+                media_status = obs_socket_manager_instance.get_media_input_status(current_source)
+                
+                if media_status:
+                    media_state = media_status.get('mediaState')
+                    
+                    # Detect the problematic pattern: visible but not playing
+                    if is_visible and media_state and media_state != "OBS_MEDIA_STATE_PLAYING":
+                        problematic_state = True
+                    
+                    visibility_state = {
+                        "source_name": current_source,
+                        "is_visible": is_visible,
+                        "media_state": media_state,
+                        "media_state_short": media_state.replace("OBS_MEDIA_STATE_", "") if media_state else None,
+                        "problematic": problematic_state,
+                        "issue": f"⚠️ Source visible while in {media_state} state!" if problematic_state else None
+                    }
+            except Exception as e:
+                logger.warning(f"Could not get real-time visibility state: {e}")
         
         if not health:
             return {
                 "status": "no_monitoring",
                 "message": "No active stream health monitoring session",
-                "current_source": stream_health_monitor.current_source
+                "current_source": current_source,
+                "monitoring_active": stream_health_monitor.monitoring_active,
+                "visibility_state": visibility_state
             }
+        
+        # Analyze health history for visibility issues
+        history = stream_health_monitor.get_health_history(count=50)
+        visibility_issues_count = sum(
+            1 for h in history 
+            if h.get('visibility_problematic', False)
+        )
+        
+        # Also check for older format (before enhancement)
+        legacy_visibility_issues = sum(
+            1 for h in history 
+            if h.get('is_visible') and h.get('media_state') not in ['OBS_MEDIA_STATE_PLAYING', None]
+        )
+        
+        total_visibility_issues = visibility_issues_count + legacy_visibility_issues
         
         return {
             "status": "success",
             "health": health,
-            "monitoring_active": stream_health_monitor.monitoring_active
+            "monitoring_active": stream_health_monitor.monitoring_active,
+            "visibility_state": visibility_state,
+            "visibility_analysis": {
+                "recent_problematic_transitions": total_visibility_issues,
+                "history_size": len(history),
+                "percentage": round((total_visibility_issues / len(history) * 100), 2) if history else 0,
+                "description": "Count of times source was visible while NOT in PLAYING state (causes frozen frames)"
+            }
         }
     except Exception as e:
+        logger.exception("Failed to get stream health")
         raise HTTPException(status_code=500, detail=f"Failed to get stream health: {str(e)}")
 
 @http_blueprint.get("/stream-health/history")

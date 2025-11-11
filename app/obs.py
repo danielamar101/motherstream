@@ -61,7 +61,7 @@ class OBSSocketManager():
         
         # Scene item caching to reduce redundant OBS calls during burst operations
         self._scene_cache = {}  # Cache scene item lists by scene name
-        self._scene_cache_ttl = 5  # Cache for 5 seconds (balance between performance and freshness)
+        self._scene_cache_ttl = 0  # Cache for 5 seconds (balance between performance and freshness)
         self._scene_cache_time = {}  # Track when each scene was cached
         
         # Dynamic source management for stream switching
@@ -136,7 +136,7 @@ class OBSSocketManager():
                 
                 if response and hasattr(response, 'datain'):
                     self._connection_healthy = True
-                    logger.debug("OBS connection health check passed")
+                    # No log for successful health checks to reduce noise
                 else:
                     logger.warning("OBS health check returned unexpected response")
                     self._connection_healthy = False
@@ -328,11 +328,9 @@ class OBSSocketManager():
         if scene_name in self._scene_cache:
             cache_age = current_time - self._scene_cache_time.get(scene_name, 0)
             if cache_age < self._scene_cache_ttl:
-                logger.debug(f"Using cached scene item list for '{scene_name}' (age: {cache_age:.1f}s)")
                 return self._scene_cache[scene_name]
         
-        # Cache miss or expired - fetch fresh data
-        logger.debug(f"Fetching fresh scene item list for '{scene_name}'")
+        # Cache miss or expired - fetch fresh data (no log to reduce spam)
         scene_item_list = self.obs_websocket.call(requests.GetSceneItemList(sceneName=scene_name))
         
         # Update cache
@@ -344,12 +342,10 @@ class OBSSocketManager():
     def _invalidate_scene_cache(self, scene_name):
         """Invalidate cache for a specific scene after state changes."""
         if scene_name in self._scene_cache:
-            logger.debug(f"Invalidating cache for scene '{scene_name}'")
             del self._scene_cache[scene_name]
             del self._scene_cache_time[scene_name]
 
     def is_source_visible(self, source_name, scene_name):
-        logger.debug(f"Checking visibility for {scene_name}:{source_name}...")
         try:
             self.ensure_connection()
             
@@ -370,7 +366,6 @@ class OBSSocketManager():
 
             is_visible = scene_item_properties.datain['sceneItemEnabled']
             
-            logger.debug(f"Source '{source_name}' visibility in '{scene_name}': {'Visible' if is_visible else 'Hidden'}")
             return is_visible
         except OBSOperationalError as e:
             # Source doesn't exist - this is not a connection issue
@@ -492,13 +487,13 @@ class OBSSocketManager():
 
     def get_media_input_status(self, input_name: str):
         """Get the status of a media input for debugging purposes."""
-        logger.info(f"Getting status for media input: {input_name}")
+        # No log - this is called every second by health monitoring
         with obs_lock:
             try:
                 self.ensure_connection()
                 request = requests.GetMediaInputStatus(inputName=input_name)
                 response = self.obs_websocket.call(request)
-                logger.info(f"Media input '{input_name}' status: {response.datain}")
+                # Only log at debug level to reduce spam
                 return response.datain
             except Exception as e:
                 logger.error(f"Failed to get media input status for {input_name}: {e}")
@@ -550,21 +545,20 @@ class OBSSocketManager():
         logger.info(f"Creating new GStreamer source '{source_name}' with URL: {rtmp_url}")
         
         # Build GStreamer pipeline with the RTMP URL
-        # YouTube Live-style: MASSIVE buffers for bulletproof smoothness
-        # Low threshold to start quickly, large max buffer absorbs all jitter
+        # YouTube Live-style: MASSIVE buffers + timestamp adjustment for bulletproof smoothness
         # Note: obs-gstreamer uses 'video.' and 'audio.' (not 'video.sink' / 'audio.sink')
         gstreamer_pipeline = (
             f"rtmpsrc location={rtmp_url} ! "
             "decodebin name=d "
-            # Video path: HUGE buffer - 900 frames = 30 seconds @ 30fps
-            # min-threshold-buffers=10 means start after ~300ms (quick start, buffer fills during playback)
+            # Video path: HUGE buffer with timestamp adjustment
+            # audiorate/videorate provide smooth timestamp flow from noisy sources
             "d. ! queue max-size-buffers=900 min-threshold-buffers=10 max-size-time=0 max-size-bytes=0 ! "
+            "videorate skip-to-first=true max-rate=30 ! video/x-raw,framerate=30/1 ! "
             "videoscale ! video/x-raw,width=1920,height=1080 ! "
             "videoconvert ! video. "
-            # Audio path: HUGE buffer - 6000 frames = ~30 seconds of audio  
-            # min-threshold-buffers=50 means start after ~300ms (quick start, buffer fills during playback)
+            # Audio path: HUGE buffer with timestamp adjustment
             "d. ! queue max-size-buffers=6000 min-threshold-buffers=50 max-size-time=0 max-size-bytes=0 ! "
-            "audioconvert ! audioresample ! "
+            "audiorate ! audioconvert ! audioresample ! "
             "audio/x-raw,rate=48000,channels=2 ! audio."
         )
         
@@ -580,7 +574,6 @@ class OBSSocketManager():
                     inputSettings={
                         "pipeline": gstreamer_pipeline,
                         "stop_on_hide": False,
-                        "restart_on_activate": False,
                         
                         # Core timestamp properties - Use stream timestamps
                         "use_timestamps_video": True,  # Use stream timestamps for video
@@ -605,13 +598,7 @@ class OBSSocketManager():
                         # NEVER drop frames - smoothness over everything
                         "drop_on_latency": False,  # Never drop, just buffer more
                         
-                        # Auto-restart on issues
-                        "restart_on_eos": True,  # Restart if stream ends
-                        "restart_on_error": True,  # Restart if pipeline errors
-                        "restart_timeout": 2000,  # Wait 2s before restart
-                        
-                        # Buffering - Let clocksync manage, don't add extra
-                        "buffering_enabled": False,  # Disable extra OBS buffering
+                        # Note: No restart settings - we create fresh sources on each switch
                     },
                     sceneItemEnabled=False  # Start hidden
                 )
@@ -745,7 +732,12 @@ class OBSSocketManager():
                 logger.error("Failed to create new source")
                 return False
             
-            # Step 2: Wait for new source to become ready
+            # Step 2: Hide old source (if exists)
+            if old_source_name:
+                logger.info(f"Step 3: Hiding old source '{old_source_name}'")
+                self.toggle_obs_source(old_source_name, scene_name, only_off=True)
+            
+            # Step 3: Wait for new source to become ready
             # With low threshold, source starts quickly, buffer fills during playback
             logger.info(f"Step 2: Waiting for source '{new_source_name}' to become ready (should be ~2-5 seconds)")
             ready = self.wait_for_source_ready(new_source_name, timeout=20.0, poll_interval=0.5)
@@ -754,11 +746,6 @@ class OBSSocketManager():
                 logger.error(f"New source '{new_source_name}' did not become ready, cleaning up")
                 self.remove_source(new_source_name)
                 return False
-            
-            # Step 3: Hide old source (if exists)
-            if old_source_name:
-                logger.info(f"Step 3: Hiding old source '{old_source_name}'")
-                self.toggle_obs_source(old_source_name, scene_name, only_off=True)
             
             # Step 4: Show new source
             logger.info(f"Step 4: Showing new source '{new_source_name}'")
