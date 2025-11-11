@@ -1,0 +1,150 @@
+================================================================================
+OBS STREAM SWITCH MONITORING TOOL - INSTALLATION COMPLETE
+================================================================================
+
+Created: 2025-11-11
+
+OBJECTIVE
+---------
+Diagnose if GMOTHERSTREAM source becomes visible before it's fully initialized,
+causing frozen frames during stream switches.
+
+FILES CREATED
+-------------
+1. obs-stream-switch-monitor.py      - Main monitoring script (Python)
+2. run-monitored-test.sh              - Wrapper to run tests with monitoring
+3. test-obs-connection.sh             - Quick connection test
+4. README-obs-monitoring.md           - Complete documentation
+5. QUICK-START-MONITORING.md          - Quick start guide
+6. obs-monitoring-summary.txt         - This file
+
+WHAT IT DOES
+------------
+The monitor continuously polls OBS WebSocket to track:
+  • Source visibility (hidden/visible)
+  • Media state (PLAYING, BUFFERING, STOPPED, etc.)
+  • Timing of all state transitions
+  • Problematic patterns (visible before ready)
+
+It logs everything to CSV with microsecond precision and generates a summary
+report identifying timing issues.
+
+QUICK START
+-----------
+1. Test connection:
+   $ ./tests/e2e/test-obs-connection.sh
+
+2. Run monitored test:
+   $ ./tests/e2e/run-monitored-test.sh orderly
+
+3. Check results:
+   $ cat tests/e2e/logs/obs-monitor-*-report.txt | tail -30
+
+CONFIGURATION
+-------------
+Poll Interval: Default 200ms (configurable via --poll-interval)
+Source:        GMOTHERSTREAM
+Scene:         MOTHERSTREAM
+Output:        tests/e2e/logs/obs-monitor-TIMESTAMP.csv
+Report:        tests/e2e/logs/obs-monitor-TIMESTAMP-report.txt
+
+WHAT TO LOOK FOR
+----------------
+HYPOTHESIS CONFIRMED (Problem exists):
+  [14:23:05.456] MEDIA_STATE_CHANGE  | HIDDEN  | STOPPED
+  [14:23:07.891] VISIBILITY_CHANGE   | VISIBLE | BUFFERING  ⚠️ PROBLEM!
+  [14:23:12.345] MEDIA_STATE_CHANGE  | VISIBLE | PLAYING
+
+  → Source visible 5 seconds before ready
+
+HYPOTHESIS REJECTED (No problem):
+  [14:23:05.456] MEDIA_STATE_CHANGE  | HIDDEN  | STOPPED
+  [14:23:06.123] MEDIA_STATE_CHANGE  | HIDDEN  | PLAYING
+  [14:23:08.456] VISIBILITY_CHANGE   | VISIBLE | PLAYING
+
+  → Source already ready before becoming visible
+
+EXPECTED FINDINGS (Based on your observations)
+-----------------------------------------------
+You mentioned it takes "upwards of 10 seconds" for the GStreamer view to be
+fixed. If the hypothesis is correct, we should see:
+
+  • RESTART_MEDIA_SOURCE triggers at T+0s
+  • Source becomes VISIBLE at T+2s (current OBS_JOB_DELAY)
+  • Source becomes PLAYING at T+10s
+  • Result: 8 seconds of frozen frame visible
+
+NEXT STEPS IF CONFIRMED
+------------------------
+Implement one of these fixes:
+
+1. SIMPLE: Increase delay
+   - Update OBS_JOB_DELAY from 2s to 12s in app/core/worker.py
+
+2. RECOMMENDED: Hide during restart
+   - Modify job sequence in app/core/process_manager.py:
+     • Turn source OFF
+     • Restart media source
+     • Turn source ON
+
+3. ROBUST: Poll for readiness
+   - Modify restart_media_source() in app/obs.py
+   - Poll GetMediaInputStatus until mediaState = "PLAYING"
+   - Only then return success
+
+TROUBLESHOOTING
+---------------
+Connection fails:
+  → Check OBS is running
+  → Verify WebSocket server enabled in OBS
+  → Check .env.prod credentials
+
+No state changes:
+  → Verify source exists and is named "GMOTHERSTREAM"
+  → Ensure stream switches occur during monitoring
+
+OBS lag:
+  → Increase poll interval: --poll-interval 0.5
+
+MONITORING WITHOUT DISRUPTION
+------------------------------
+The monitor is read-only - it never modifies OBS state. Default 200ms polling
+is designed to be lightweight. If you experience any OBS performance issues,
+simply increase the poll interval.
+
+EXAMPLE SESSION
+---------------
+$ ./tests/e2e/test-obs-connection.sh
+✓ Connection test passed
+
+$ ./tests/e2e/run-monitored-test.sh orderly
+[Monitor starts]
+[Test runs for ~60 minutes with 10 stream switches]
+[Monitor stops and generates report]
+
+$ cat tests/e2e/logs/obs-monitor-20251111-142301-report.txt
+...
+⚠️ PROBLEMATIC TRANSITIONS DETECTED
+Found 10 instances where source was visible while in BUFFERING state
+Average time from restart to ready: 8.3 seconds
+CONCLUSION: Source is becoming visible before it's ready!
+
+DOCUMENTATION
+-------------
+For complete details, see:
+  • QUICK-START-MONITORING.md - Getting started
+  • README-obs-monitoring.md   - Full documentation
+
+SUPPORT
+-------
+The monitoring tool is standalone and non-invasive. It won't affect your
+running system. If you encounter any issues:
+  1. Test connection with test-obs-connection.sh
+  2. Check OBS WebSocket settings
+  3. Try slower polling (--poll-interval 0.5)
+  4. Review monitor console output for errors
+
+================================================================================
+Ready to diagnose! Start with: ./tests/e2e/test-obs-connection.sh
+================================================================================
+

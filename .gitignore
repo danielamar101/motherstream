@@ -24,3 +24,5 @@ pg/
 staging/
 oryx-staging/
 logs/
+tests/e2e/logs2/
+**/*/logs2/

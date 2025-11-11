@@ -88,14 +88,14 @@ class StreamManager(metaclass=Singleton):
         
         # Reset stream health checker for new stream
         self.stream_health_checker.reset()
-        
-        add_job(JobType.START_STREAM, payload={"stream_key": stream_key, "dj_name": dj_name})
-        logger.info(f"Enqueued START_STREAM job for DJ: {dj_name} with key: {stream_key}")
 
         # Restart the GStreamer media source FIRST (before toggling on)
         # This ensures the media source is refreshed before being enabled
         add_job(JobType.RESTART_MEDIA_SOURCE, payload={"source_name": "GMOTHERSTREAM"})
         logger.debug("Enqueued RESTART_MEDIA_SOURCE job for GMOTHERSTREAM")
+        
+        add_job(JobType.START_STREAM, payload={"stream_key": stream_key, "dj_name": dj_name})
+        logger.info(f"Enqueued START_STREAM job for DJ: {dj_name} with key: {stream_key}")
 
         add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": False})
         logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer on)")
