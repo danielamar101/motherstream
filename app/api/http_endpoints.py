@@ -288,6 +288,199 @@ async def simulate_stream_switch():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to simulate stream switch: {str(e)}")
 
+@http_blueprint.post("/debug/test-dynamic-source-switch")
+async def test_dynamic_source_switch(
+    rtmp_url: str = "rtmp://127.0.0.1:1935/live/test",
+    scene_name: str = "MOTHERSTREAM"
+):
+    """
+    Test the new dynamic GStreamer source creation approach.
+    This creates a fresh source with the specified RTMP URL.
+    """
+    try:
+        from app.core.worker import add_job, JobType
+        
+        logger.info(f"Testing dynamic source switch with URL: {rtmp_url}")
+        
+        add_job(JobType.SWITCH_GSTREAMER_SOURCE, payload={
+            "rtmp_url": rtmp_url,
+            "scene_name": scene_name
+        })
+        
+        return {
+            "status": "success",
+            "message": f"Dynamic source switch job enqueued",
+            "rtmp_url": rtmp_url,
+            "scene_name": scene_name,
+            "note": "A new GStreamer source will be created, buffered, and shown when ready. Old source will be cleaned up."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to test dynamic source switch: {str(e)}")
+
+@http_blueprint.post("/debug/set-source-z-offset")
+async def set_source_z_offset(z_offset: int):
+    """
+    Configure how many layers from the top to place dynamically created stream sources.
+    Default is 5 (keeps 5 layers of overlays/text on top of the stream).
+    
+    :param z_offset: Number of layers from the top (0 = top layer, 5 = 5 layers below top, etc.)
+    """
+    try:
+        if z_offset < 0 or z_offset > 50:
+            raise HTTPException(status_code=400, detail="z_offset must be between 0 and 50")
+        
+        obs_socket_manager_instance._source_z_offset = z_offset
+        
+        return {
+            "status": "success",
+            "message": f"Source z-offset updated to {z_offset}",
+            "z_offset": z_offset,
+            "note": "New sources will be placed this many layers below the top. Higher = lower in scene."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to set z-offset: {str(e)}")
+
+@http_blueprint.get("/debug/get-source-z-offset")
+async def get_source_z_offset():
+    """
+    Get the current z-offset setting for dynamically created sources.
+    """
+    try:
+        return {
+            "status": "success",
+            "z_offset": obs_socket_manager_instance._source_z_offset,
+            "description": f"Sources are placed {obs_socket_manager_instance._source_z_offset} layers below the top"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get z-offset: {str(e)}")
+
+@http_blueprint.get("/stream-health/current")
+async def get_current_stream_health():
+    """
+    Get the current health snapshot of the monitored stream.
+    Provides detailed metrics for diagnosing playback issues.
+    """
+    try:
+        from app.core.stream_metrics import stream_health_monitor
+        
+        health = stream_health_monitor.get_current_health()
+        
+        if not health:
+            return {
+                "status": "no_monitoring",
+                "message": "No active stream health monitoring session",
+                "current_source": stream_health_monitor.current_source
+            }
+        
+        return {
+            "status": "success",
+            "health": health,
+            "monitoring_active": stream_health_monitor.monitoring_active
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get stream health: {str(e)}")
+
+@http_blueprint.get("/stream-health/history")
+async def get_stream_health_history(count: int = 20):
+    """
+    Get recent stream health history.
+    
+    :param count: Number of recent snapshots to return (default: 20, max: 100)
+    """
+    try:
+        from app.core.stream_metrics import stream_health_monitor
+        
+        count = min(count, 100)  # Cap at 100
+        history = stream_health_monitor.get_health_history(count)
+        
+        return {
+            "status": "success",
+            "count": len(history),
+            "monitoring_active": stream_health_monitor.monitoring_active,
+            "current_source": stream_health_monitor.current_source,
+            "history": history
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get health history: {str(e)}")
+
+@http_blueprint.post("/stream-health/configure")
+async def configure_stream_health_monitoring(poll_interval: float = 1.0):
+    """
+    Configure stream health monitoring parameters.
+    
+    :param poll_interval: How often to collect metrics in seconds (0.1-10.0)
+    """
+    try:
+        from app.core.stream_metrics import stream_health_monitor
+        
+        if poll_interval < 0.1 or poll_interval > 10.0:
+            raise HTTPException(status_code=400, detail="poll_interval must be between 0.1 and 10.0 seconds")
+        
+        stream_health_monitor.poll_interval = poll_interval
+        
+        return {
+            "status": "success",
+            "message": f"Stream health monitoring configured",
+            "poll_interval": poll_interval,
+            "note": "Changes apply to future monitoring sessions"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to configure monitoring: {str(e)}")
+
+@http_blueprint.post("/stream-health/stop")
+async def stop_stream_health_monitoring():
+    """
+    Manually stop the current stream health monitoring session.
+    Generates a summary report automatically.
+    """
+    try:
+        from app.core.stream_metrics import stream_health_monitor
+        
+        if not stream_health_monitor.monitoring_active:
+            return {
+                "status": "not_active",
+                "message": "No active monitoring session to stop"
+            }
+        
+        current_source = stream_health_monitor.current_source
+        csv_file = stream_health_monitor.current_csv_file
+        
+        stream_health_monitor.stop_monitoring()
+        
+        return {
+            "status": "success",
+            "message": f"Stopped monitoring for '{current_source}'",
+            "csv_file": csv_file,
+            "report_file": csv_file.replace('.csv', '-report.txt') if csv_file else None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to stop monitoring: {str(e)}")
+
+@http_blueprint.get("/stream-health/status")
+async def get_stream_health_monitoring_status():
+    """
+    Get the status of stream health monitoring system.
+    """
+    try:
+        from app.core.stream_metrics import stream_health_monitor
+        
+        return {
+            "status": "success",
+            "monitoring_active": stream_health_monitor.monitoring_active,
+            "current_source": stream_health_monitor.current_source,
+            "rtmp_url": stream_health_monitor.current_rtmp_url,
+            "poll_count": stream_health_monitor.poll_count,
+            "poll_interval": stream_health_monitor.poll_interval,
+            "current_csv_file": stream_health_monitor.current_csv_file,
+            "history_size": len(stream_health_monitor.snapshot_history)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get monitoring status: {str(e)}")
+
 @http_blueprint.get("/obs/connection-health")
 async def get_obs_connection_health():
     """

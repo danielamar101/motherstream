@@ -64,6 +64,14 @@ class OBSSocketManager():
         self._scene_cache_ttl = 5  # Cache for 5 seconds (balance between performance and freshness)
         self._scene_cache_time = {}  # Track when each scene was cached
         
+        # Dynamic source management for stream switching
+        self.current_gstreamer_source = None  # Track the currently active GStreamer source name
+        self._source_creation_counter = 0  # Counter for generating unique source names
+        self._source_z_offset = 7  # How many layers from the top to place stream sources (keeps overlays on top)
+        
+        # Stream health monitoring (set reference after import to avoid circular dependency)
+        self.stream_health_monitor = None
+        
         # Start health monitoring thread
         self._start_health_monitor()
 
@@ -515,7 +523,338 @@ class OBSSocketManager():
                 self._connection_healthy = False
                 return []
 
+    def get_stats(self):
+        """Get OBS performance statistics."""
+        with obs_lock:
+            try:
+                self.ensure_connection()
+                request = requests.GetStats()
+                response = self.obs_websocket.call(request)
+                return response.datain
+            except Exception as e:
+                logger.debug(f"Failed to get OBS stats: {e}")
+                return None
+
+    def create_gstreamer_source(self, source_name: str, rtmp_url: str, scene_name: str = "MOTHERSTREAM"):
+        """
+        Create a new GStreamer source with the specified RTMP URL.
+        
+        Args:
+            source_name: Name for the new source
+            rtmp_url: RTMP URL to stream from
+            scene_name: Scene to add the source to
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        logger.info(f"Creating new GStreamer source '{source_name}' with URL: {rtmp_url}")
+        
+        # Build GStreamer pipeline with the RTMP URL
+        # YouTube Live-style: MASSIVE buffers for bulletproof smoothness
+        # Low threshold to start quickly, large max buffer absorbs all jitter
+        # Note: obs-gstreamer uses 'video.' and 'audio.' (not 'video.sink' / 'audio.sink')
+        gstreamer_pipeline = (
+            f"rtmpsrc location={rtmp_url} ! "
+            "decodebin name=d "
+            # Video path: HUGE buffer - 900 frames = 30 seconds @ 30fps
+            # min-threshold-buffers=10 means start after ~300ms (quick start, buffer fills during playback)
+            "d. ! queue max-size-buffers=900 min-threshold-buffers=10 max-size-time=0 max-size-bytes=0 ! "
+            "videoscale ! video/x-raw,width=1920,height=1080 ! "
+            "videoconvert ! video. "
+            # Audio path: HUGE buffer - 6000 frames = ~30 seconds of audio  
+            # min-threshold-buffers=50 means start after ~300ms (quick start, buffer fills during playback)
+            "d. ! queue max-size-buffers=6000 min-threshold-buffers=50 max-size-time=0 max-size-bytes=0 ! "
+            "audioconvert ! audioresample ! "
+            "audio/x-raw,rate=48000,channels=2 ! audio."
+        )
+        
+        with obs_lock:
+            try:
+                self.ensure_connection()
+                
+                # Create the input (source) with optimal timestamp and buffer settings
+                create_request = requests.CreateInput(
+                    sceneName=scene_name,
+                    inputName=source_name,
+                    inputKind="gstreamer-source",  # obs-gstreamer plugin type
+                    inputSettings={
+                        "pipeline": gstreamer_pipeline,
+                        "stop_on_hide": False,
+                        "restart_on_activate": False,
+                        
+                        # Core timestamp properties - Use stream timestamps
+                        "use_timestamps_video": True,  # Use stream timestamps for video
+                        "use_timestamps_audio": True,  # Use stream timestamps for audio
+                        
+                        # Timestamp normalization - YouTube-style: Very forgiving
+                        "normalize_timestamps": True,  # Let OBS normalize timestamps
+                        "reset_timestamps_on_discontinuity": True,  # Reset on jumps/reconnects
+                        "max_timestamp_jump": 30000,  # Reset only if jump > 30 seconds (very forgiving!)
+                        "timestamp_offset": 0,  # No manual offset
+                        
+                        # Appsink sync - DISABLE (let OBS handle final sync)
+                        "sync_appsinks": False,  # Let OBS handle A/V sync
+                        
+                        # Buffer sizes - Additional OBS-level buffering for YouTube-style stability
+                        "video_buffer_size": 100,  # OBS buffers 100 more frames (~3.3 seconds)
+                        "audio_buffer_size": 500,  # OBS buffers 500 more audio frames
+                        
+                        # Buffering enabled for maximum stability
+                        "buffering_enabled": True,  # Enable OBS buffering layer
+                        
+                        # NEVER drop frames - smoothness over everything
+                        "drop_on_latency": False,  # Never drop, just buffer more
+                        
+                        # Auto-restart on issues
+                        "restart_on_eos": True,  # Restart if stream ends
+                        "restart_on_error": True,  # Restart if pipeline errors
+                        "restart_timeout": 2000,  # Wait 2s before restart
+                        
+                        # Buffering - Let clocksync manage, don't add extra
+                        "buffering_enabled": False,  # Disable extra OBS buffering
+                    },
+                    sceneItemEnabled=False  # Start hidden
+                )
+                response = self.obs_websocket.call(create_request)
+                scene_item_id = response.datain.get('sceneItemId')
+                
+                logger.info(f"Successfully created GStreamer source: {source_name} (sceneItemId: {scene_item_id})")
+                logger.debug(f"Create response: {response.datain if hasattr(response, 'datain') else 'No response data'}")
+                
+                # Set z-order to be N layers below the top (so overlays stay on top)
+                # Get total number of scene items
+                scene_item_list = self.obs_websocket.call(requests.GetSceneItemList(sceneName=scene_name))
+                total_items = len(scene_item_list.datain['sceneItems'])
+                
+                # Calculate target index (N from top, but ensure it's not negative)
+                # In OBS, index 0 is the bottom, higher indices are on top
+                # So if we have 10 items (indices 0-9), and want 5 from top, that's index 4
+                target_index = max(0, total_items - self._source_z_offset - 1)  # -1 because we just added one item
+                
+                logger.info(f"Setting z-order for '{source_name}' to index {target_index} ({self._source_z_offset} layers from top, total items: {total_items})")
+                
+                # Set the scene item index (z-order)
+                self.obs_websocket.call(requests.SetSceneItemIndex(
+                    sceneName=scene_name,
+                    sceneItemId=scene_item_id,
+                    sceneItemIndex=target_index
+                ))
+                
+                logger.debug(f"Z-order set successfully for '{source_name}'")
+                
+                # Invalidate scene cache since we added a new source and changed ordering
+                self._invalidate_scene_cache(scene_name)
+                
+                return True
+                
+            except Exception as e:
+                logger.error(f"Failed to create GStreamer source '{source_name}': {e}", exc_info=True)
+                self._connection_healthy = False
+                return False
+
+    def remove_source(self, source_name: str):
+        """
+        Remove a source/input from OBS.
+        
+        Args:
+            source_name: Name of the source to remove
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        logger.info(f"Removing source: {source_name}")
+        
+        with obs_lock:
+            try:
+                self.ensure_connection()
+                
+                remove_request = requests.RemoveInput(inputName=source_name)
+                response = self.obs_websocket.call(remove_request)
+                
+                logger.info(f"Successfully removed source: {source_name}")
+                logger.debug(f"Remove response: {response.datain if hasattr(response, 'datain') else 'No response data'}")
+                
+                return True
+                
+            except Exception as e:
+                logger.error(f"Failed to remove source '{source_name}': {e}", exc_info=True)
+                self._connection_healthy = False
+                return False
+
+    def wait_for_source_ready(self, source_name: str, timeout: float = 15.0, poll_interval: float = 0.5):
+        """
+        Poll a media source until it's in PLAYING state or timeout.
+        
+        Args:
+            source_name: Name of the source to check
+            timeout: Maximum time to wait in seconds
+            poll_interval: Time between checks in seconds
+            
+        Returns:
+            bool: True if source became ready, False if timeout
+        """
+        logger.info(f"Waiting for source '{source_name}' to become ready (timeout: {timeout}s)")
+        start_time = time.time()
+        
+        while (time.time() - start_time) < timeout:
+            try:
+                status = self.get_media_input_status(source_name)
+                
+                if status:
+                    media_state = status.get('mediaState')
+                    logger.debug(f"Source '{source_name}' state: {media_state}")
+                    
+                    if media_state == "OBS_MEDIA_STATE_PLAYING":
+                        elapsed = time.time() - start_time
+                        logger.info(f"Source '{source_name}' is PLAYING after {elapsed:.2f}s")
+                        return True
+                
+                time.sleep(poll_interval)
+                
+            except Exception as e:
+                logger.warning(f"Error checking source readiness: {e}")
+                time.sleep(poll_interval)
+        
+        elapsed = time.time() - start_time
+        logger.warning(f"Source '{source_name}' did not become ready within {elapsed:.2f}s")
+        return False
+
+    def switch_to_new_gstreamer_source(self, rtmp_url: str, scene_name: str = "MOTHERSTREAM"):
+        """
+        Switch to a new stream by creating a fresh GStreamer source.
+        This avoids timestamp inconsistencies and restart issues.
+        
+        Args:
+            rtmp_url: The RTMP URL of the new stream
+            scene_name: Scene containing the sources
+            
+        Returns:
+            bool: True if switch was successful, False otherwise
+        """
+        logger.info(f"Switching to new GStreamer source with URL: {rtmp_url}")
+        
+        # Generate unique source name
+        self._source_creation_counter += 1
+        new_source_name = f"GMOTHERSTREAM_{self._source_creation_counter}"
+        old_source_name = self.current_gstreamer_source
+        
+        try:
+            # Step 1: Create new source (hidden)
+            logger.info(f"Step 1: Creating new source '{new_source_name}'")
+            if not self.create_gstreamer_source(new_source_name, rtmp_url, scene_name):
+                logger.error("Failed to create new source")
+                return False
+            
+            # Step 2: Wait for new source to become ready
+            # With low threshold, source starts quickly, buffer fills during playback
+            logger.info(f"Step 2: Waiting for source '{new_source_name}' to become ready (should be ~2-5 seconds)")
+            ready = self.wait_for_source_ready(new_source_name, timeout=20.0, poll_interval=0.5)
+            
+            if not ready:
+                logger.error(f"New source '{new_source_name}' did not become ready, cleaning up")
+                self.remove_source(new_source_name)
+                return False
+            
+            # Step 3: Hide old source (if exists)
+            if old_source_name:
+                logger.info(f"Step 3: Hiding old source '{old_source_name}'")
+                self.toggle_obs_source(old_source_name, scene_name, only_off=True)
+            
+            # Step 4: Show new source
+            logger.info(f"Step 4: Showing new source '{new_source_name}'")
+            # Use direct visibility setting instead of toggle to ensure it's visible
+            self._set_source_visibility(new_source_name, scene_name, True)
+            
+            # Step 5: Clean up old source after a grace period
+            if old_source_name:
+                logger.info(f"Step 5: Scheduling cleanup of old source '{old_source_name}'")
+                # Give a moment for the switch to stabilize
+                time.sleep(1.0)
+                self.remove_source(old_source_name)
+                logger.info(f"Cleaned up old source '{old_source_name}'")
+            
+            # Update current source tracking
+            self.current_gstreamer_source = new_source_name
+            logger.info(f"Successfully switched to new source '{new_source_name}'")
+            
+            # Start health monitoring for the new source
+            if self.stream_health_monitor:
+                try:
+                    self.stream_health_monitor.start_monitoring(
+                        source_name=new_source_name,
+                        rtmp_url=rtmp_url,
+                        scene_name=scene_name
+                    )
+                    logger.info(f"Started health monitoring for '{new_source_name}'")
+                except Exception as e:
+                    logger.warning(f"Failed to start health monitoring: {e}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error during source switch: {e}", exc_info=True)
+            # Cleanup on failure
+            if new_source_name:
+                try:
+                    self.remove_source(new_source_name)
+                except:
+                    pass
+            return False
+
+    def _set_source_visibility(self, source_name: str, scene_name: str, visible: bool):
+        """
+        Directly set a source's visibility without toggling.
+        
+        Args:
+            source_name: Name of the source
+            scene_name: Scene containing the source
+            visible: True to show, False to hide
+        """
+        logger.debug(f"Setting source '{source_name}' visibility to {visible}")
+        
+        with obs_lock:
+            try:
+                self.ensure_connection()
+                
+                # Get scene item list
+                scene_item_list = self._get_scene_item_list_cached(scene_name)
+                
+                # Find the scene item ID
+                scene_id = None
+                for item in scene_item_list.datain['sceneItems']:
+                    if item['sourceName'] == source_name:
+                        scene_id = item['sceneItemId']
+                        break
+                
+                if not scene_id:
+                    raise OBSOperationalError(f"Cannot find source '{source_name}' in scene '{scene_name}'")
+                
+                # Set visibility
+                self.obs_websocket.call(requests.SetSceneItemEnabled(
+                    sceneName=scene_name,
+                    sceneItemId=scene_id,
+                    sceneItemEnabled=visible
+                ))
+                
+                logger.debug(f"Source '{source_name}' visibility set to {visible}")
+                
+                # Invalidate cache
+                self._invalidate_scene_cache(scene_name)
+                
+            except Exception as e:
+                logger.error(f"Failed to set source visibility: {e}")
+                raise
+
 # Create a global instance
 # Ensure environment variables are loaded before this point if running as script
 # In a FastAPI context, this will run when the module is imported.
 obs_socket_manager_instance = OBSSocketManager()
+
+# Set up stream health monitoring integration
+try:
+    from app.core.stream_metrics import stream_health_monitor
+    obs_socket_manager_instance.stream_health_monitor = stream_health_monitor
+    stream_health_monitor.obs_manager = obs_socket_manager_instance
+    logger.info("Stream health monitoring integration enabled")
+except ImportError as e:
+    logger.warning(f"Stream health monitoring not available: {e}")

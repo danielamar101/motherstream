@@ -37,6 +37,7 @@ class JobType(Enum):
     RESTART_MEDIA_SOURCE = "restart_media_source"
     FLASH_LOADING_MESSAGE = "flash_loading_message"
     CHECK_STREAM_HEALTH = "check_stream_health"
+    SWITCH_GSTREAMER_SOURCE = "switch_gstreamer_source"  # New: Dynamic source creation
 
 @dataclass
 class Job:
@@ -77,7 +78,12 @@ def write_job_timing(job_type: JobType, wait_time: float, execution_time: float,
 
 def is_obs_related_job(job_type: JobType) -> bool:
     """Check if a job type involves OBS websocket operations."""
-    obs_job_types = {JobType.TOGGLE_OBS_SRC, JobType.RESTART_MEDIA_SOURCE, JobType.FLASH_LOADING_MESSAGE}
+    obs_job_types = {
+        JobType.TOGGLE_OBS_SRC, 
+        JobType.RESTART_MEDIA_SOURCE, 
+        JobType.FLASH_LOADING_MESSAGE,
+        JobType.SWITCH_GSTREAMER_SOURCE
+    }
     return job_type in obs_job_types
 
 def wait_for_obs_job_delay():
@@ -216,6 +222,24 @@ def dispatch(job: Job):
                     logger.debug(f"Stream {stream_url} is healthy")
             else:
                 logger.warning("CHECK_STREAM_HEALTH job missing 'stream_url' or 'health_checker' in payload")
+
+        elif job.type == JobType.SWITCH_GSTREAMER_SOURCE:
+            # Dynamic source creation for stream switching
+            rtmp_url = job.payload.get("rtmp_url")
+            scene_name = job.payload.get("scene_name", "MOTHERSTREAM")
+            
+            if rtmp_url:
+                logger.info(f"Switching to new GStreamer source with URL: {rtmp_url}")
+                success = obs_socket_manager_instance.switch_to_new_gstreamer_source(
+                    rtmp_url=rtmp_url,
+                    scene_name=scene_name
+                )
+                if success:
+                    logger.info("Successfully switched to new GStreamer source")
+                else:
+                    logger.error("Failed to switch to new GStreamer source")
+            else:
+                logger.warning("SWITCH_GSTREAMER_SOURCE job missing 'rtmp_url' in payload")
 
         else:
             # Consider logging an error or raising for unhandled job types

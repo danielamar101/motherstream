@@ -89,16 +89,25 @@ class StreamManager(metaclass=Singleton):
         # Reset stream health checker for new stream
         self.stream_health_checker.reset()
 
-        # Restart the GStreamer media source FIRST (before toggling on)
-        # This ensures the media source is refreshed before being enabled
-        add_job(JobType.RESTART_MEDIA_SOURCE, payload={"source_name": "GMOTHERSTREAM"})
-        logger.debug("Enqueued RESTART_MEDIA_SOURCE job for GMOTHERSTREAM")
+        # NEW APPROACH: Create a fresh GStreamer source with the new stream's RTMP URL
+        # This avoids timestamp inconsistencies and ensures proper buffering before visibility
+
+        if os.getenv("ENV") == "prod":
+            rtmp_url = f"rtmp://{os.getenv("DOMAIN")}:{os.getenv("RTMP_PORT")}/live/{stream_key}"
+        else:
+            rtmp_url = f"rtmp://{os.getenv("DOMAIN")}:{os.getenv("PUBLIC_RTMP_PORT")}/staging/live/{stream_key}"
+        
+        add_job(JobType.SWITCH_GSTREAMER_SOURCE, payload={
+            "rtmp_url": rtmp_url,
+            "scene_name": "MOTHERSTREAM"
+        })
+        logger.info(f"Enqueued SWITCH_GSTREAMER_SOURCE job with URL: {rtmp_url}")
         
         add_job(JobType.START_STREAM, payload={"stream_key": stream_key, "dj_name": dj_name})
         logger.info(f"Enqueued START_STREAM job for DJ: {dj_name} with key: {stream_key}")
 
-        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": False})
-        logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer on)")
+        # No need to toggle source visibility - the SWITCH_GSTREAMER_SOURCE handles it
+        # The new source will be shown only after it's buffered and ready
 
         add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "timer", "only_off": False})
         logger.debug("Enqueued TOGGLE_OBS_SRC job (timer on)")
@@ -131,9 +140,11 @@ class StreamManager(metaclass=Singleton):
 
             logger.debug(f"Switching away from: {old_streamer.dj_name} ({old_streamer.stream_key})")
 
-            # Turn off gstreamer source
+            # NOTE: With dynamic source creation, we don't need to manually turn off sources
+            # The SWITCH_GSTREAMER_SOURCE job (called in start_stream) handles hiding old sources
+            # However, we keep this for backwards compatibility with any static GMOTHERSTREAM sources
             add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True})
-            logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer off)")
+            logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer off - legacy/safety)")
 
             # Stop recording old stream
             add_job(JobType.STOP_RECORDING, payload={"stream_key": old_streamer.stream_key, "dj_name": old_streamer.dj_name})
