@@ -1,0 +1,25 @@
+# Shared Nginx Router for Production and Staging
+# This container routes traffic to both environments based on domain name
+services:
+  nginx-router:
+    container_name: nginx-router
+    image: nginx:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx-config/router.conf:/etc/nginx/nginx.conf
+      - ./docker-volume-mounts/certs/:/etc/letsencrypt/
+      - /etc/letsencrypt/:/etc/letsencrypt-staging/:ro
+      - ./docker-volume-mounts/certbot/www/:/var/www/certbot/:ro
+    networks:
+      - prod-network
+      - staging-network
+    restart: unless-stopped
+
+networks:
+  prod-network:
+    external: true
+  staging-network:
+    external: true
+

@@ -1,9 +1,12 @@
 import threading
 import time
+import os
 import logging
+import csv
 from queue import Queue
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 
 from app.api.discord import send_discord_message
 from app.core.srs_stream_manager import async_record_stream, drop_stream_publisher
@@ -19,6 +22,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 last_obs_job_time = 0
 OBS_JOB_DELAY = 2.0  # Minimum seconds between OBS jobs to prevent crashes
 
+# Job timing tracking
+JOB_TIMING_FILE = "/app/logs/job_timings.csv"  # Docker container path with volume mount
+job_timing_lock = threading.Lock()
+
 class JobType(Enum):
     START_STREAM     = "start_stream"
     SWITCH_STREAM    = "switch_stream"
@@ -30,17 +37,55 @@ class JobType(Enum):
     RESTART_MEDIA_SOURCE = "restart_media_source"
     FLASH_LOADING_MESSAGE = "flash_loading_message"
     CHECK_STREAM_HEALTH = "check_stream_health"
+    SWITCH_GSTREAMER_SOURCE = "switch_gstreamer_source"  # New: Dynamic source creation
+    REMOVE_GSTREAMER_SOURCE = "remove_gstreamer_source"  # Remove GStreamer source when queue is empty
 
 @dataclass
 class Job:
     type: JobType
     payload: dict
+    enqueued_at: float = field(default_factory=time.time)
 
 job_queue: Queue[Job] = Queue()
 
+def write_job_timing(job_type: JobType, wait_time: float, execution_time: float, timestamp: str):
+    """Write job timing information to a CSV file."""
+    try:
+        with job_timing_lock:
+            # Ensure the logs directory exists
+            log_dir = os.path.dirname(JOB_TIMING_FILE)
+            os.makedirs(log_dir, exist_ok=True)
+            
+            # Check if file exists to determine if we need to write headers
+            file_exists = os.path.isfile(JOB_TIMING_FILE)
+            
+            with open(JOB_TIMING_FILE, 'a', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                
+                # Write header if file is new
+                if not file_exists:
+                    writer.writerow(['timestamp', 'job_type', 'wait_time_ms', 'execution_time_ms', 'total_time_ms'])
+                
+                # Write timing data
+                writer.writerow([
+                    timestamp,
+                    job_type.name,
+                    f"{wait_time * 1000:.2f}",  # Convert to milliseconds
+                    f"{execution_time * 1000:.2f}",  # Convert to milliseconds
+                    f"{(wait_time + execution_time) * 1000:.2f}"  # Total time
+                ])
+    except Exception as e:
+        logger.error(f"Failed to write job timing to file: {e}", exc_info=True)
+
 def is_obs_related_job(job_type: JobType) -> bool:
     """Check if a job type involves OBS websocket operations."""
-    obs_job_types = {JobType.TOGGLE_OBS_SRC, JobType.RESTART_MEDIA_SOURCE, JobType.FLASH_LOADING_MESSAGE}
+    obs_job_types = {
+        JobType.TOGGLE_OBS_SRC, 
+        JobType.RESTART_MEDIA_SOURCE, 
+        JobType.FLASH_LOADING_MESSAGE,
+        JobType.SWITCH_GSTREAMER_SOURCE,
+        JobType.REMOVE_GSTREAMER_SOURCE
+    }
     return job_type in obs_job_types
 
 def wait_for_obs_job_delay():
@@ -58,10 +103,14 @@ def wait_for_obs_job_delay():
 
 def dispatch(job: Job):
     """Calls the appropriate function based on the job type."""
-    if job.type not in [JobType.CHECK_STREAM_HEALTH]:
-        logger.info(f"Dispatching job: {job.type.name} with payload: {job.payload}")
-    else:
-        logger.debug(f"Dispatching job: {job.type.name}")
+    # Track timing
+    dispatch_start_time = time.time()
+    wait_time = dispatch_start_time - job.enqueued_at
+    timestamp = datetime.now().isoformat()
+    
+    # Only log dispatch for non-health-check jobs (reduces noise)
+    if job.type != JobType.CHECK_STREAM_HEALTH:
+        logger.info(f"Dispatching job: {job.type.name} with payload: {job.payload} (waited {wait_time*1000:.2f}ms)")
         
     # Add delay before OBS-related jobs to prevent crashes
     if is_obs_related_job(job.type):
@@ -85,23 +134,24 @@ def dispatch(job: Job):
             source_name = job.payload.get("source_name")
             scene_name = job.payload.get("scene_name", "MOTHERSTREAM") # Default scene
             only_off = job.payload.get("only_off", False)
-            toggle_timespan = job.payload.get("toggle_timespan", 1) # Default timespan
             if source_name:
                 # Map specific source names if needed (e.g., "gstreamer" -> "GMOTHERSTREAM")
                 actual_source_name = source_name
                 if source_name == "gstreamer":
                     actual_source_name = "GMOTHERSTREAM"
                 elif source_name == "timer":
-                    actual_source_name = "TIMER1"
+                    actual_source_name = "TIMER"
                 elif source_name == "loading":
                     actual_source_name = "LOADING"
                 # Add more mappings as needed
+
+                if os.environ.get("ENVIRONMENT") == "staging":
+                    actual_source_name = f"{actual_source_name} Staging"
 
                 logger.info(f"Toggling OBS source: {scene_name}:{actual_source_name}, only_off={only_off}")
                 obs_socket_manager_instance.toggle_obs_source(
                     source_name=actual_source_name,
                     scene_name=scene_name,
-                    toggle_timespan=toggle_timespan,
                     only_off=only_off
                 )
                 # Special case for timer - toggle text label too
@@ -109,7 +159,6 @@ def dispatch(job: Job):
                      obs_socket_manager_instance.toggle_obs_source(
                         source_name="TIME REMAINING",
                         scene_name=scene_name,
-                        toggle_timespan=toggle_timespan,
                         only_off=only_off
                     )
             else:
@@ -150,13 +199,11 @@ def dispatch(job: Job):
             # Flash the loading message - equivalent to toggle_loading_message_source
             scene_name = job.payload.get("scene_name", "MOTHERSTREAM")  # Default scene
             only_off = job.payload.get("only_off", False)
-            toggle_timespan = job.payload.get("toggle_timespan", 1.5)  # Default timespan from original code
             
             logger.debug("Flashing loading message...")
             obs_socket_manager_instance.toggle_obs_source(
                 source_name="LOADING",
                 scene_name=scene_name,
-                toggle_timespan=toggle_timespan,
                 only_off=only_off
             )
 
@@ -166,22 +213,67 @@ def dispatch(job: Job):
             health_checker = job.payload.get("health_checker")
             
             if stream_url and health_checker:
-                logger.debug(f"Checking health for stream: {stream_url}")
+                # Health checker will log problems internally
                 is_healthy = health_checker.check_stream_health()
                 
+                # Only log if stream is unhealthy with details
                 if not is_healthy:
                     unhealthy_duration = health_checker.get_unhealthy_duration()
-                    logger.warning(f"Stream {stream_url} unhealthy for {unhealthy_duration:.1f}s")
-                else:
-                    logger.debug(f"Stream {stream_url} is healthy")
+                    logger.warning(f"⚠️  Stream unhealthy for {unhealthy_duration:.1f}s | Threshold: 30s")
+                # Healthy streams don't log - reduces noise
             else:
                 logger.warning("CHECK_STREAM_HEALTH job missing 'stream_url' or 'health_checker' in payload")
+
+        elif job.type == JobType.SWITCH_GSTREAMER_SOURCE:
+            # Dynamic source creation for stream switching
+            rtmp_url = job.payload.get("rtmp_url")
+            scene_name = job.payload.get("scene_name", "MOTHERSTREAM")
+            
+            if rtmp_url:
+                logger.info(f"Switching to new GStreamer source with URL: {rtmp_url}")
+                success = obs_socket_manager_instance.switch_to_new_gstreamer_source(
+                    rtmp_url=rtmp_url,
+                    scene_name=scene_name
+                )
+                if success:
+                    logger.info("Successfully switched to new GStreamer source")
+                else:
+                    logger.error("Failed to switch to new GStreamer source")
+            else:
+                logger.warning("SWITCH_GSTREAMER_SOURCE job missing 'rtmp_url' in payload")
+
+        elif job.type == JobType.REMOVE_GSTREAMER_SOURCE:
+            # Remove the current GStreamer source when queue is empty
+            source_name = job.payload.get("source_name")
+            
+            if source_name:
+                logger.info(f"Removing GStreamer source: {source_name}")
+                success = obs_socket_manager_instance.remove_source(source_name)
+                if success:
+                    logger.info(f"Successfully removed GStreamer source: {source_name}")
+                    # Clear the tracked source name
+                    obs_socket_manager_instance.current_gstreamer_source = None
+                else:
+                    logger.error(f"Failed to remove GStreamer source: {source_name}")
+            else:
+                logger.warning("REMOVE_GSTREAMER_SOURCE job missing 'source_name' in payload")
 
         else:
             # Consider logging an error or raising for unhandled job types
             logger.warning(f"Unhandled job type: {job.type}")
+        
+        # Record successful execution time
+        execution_time = time.time() - dispatch_start_time
+        write_job_timing(job.type, wait_time, execution_time, timestamp)
+        
+        if job.type not in [JobType.CHECK_STREAM_HEALTH]:
+            logger.info(f"Job {job.type.name} executed in {execution_time*1000:.2f}ms")
+        
     except Exception as e:
         logger.error(f"Error processing job {job.type.name}: {e}", exc_info=True)
+        # Still record timing even on failure
+        execution_time = time.time() - dispatch_start_time
+        write_job_timing(job.type, wait_time, execution_time, timestamp)
         # Optional: Implement retry logic here, e.g., re-queueing the job
         # if job.retries < MAX_RETRIES:
         #     job.retries += 1
@@ -196,7 +288,13 @@ def worker_loop():
         job = None # Ensure job is defined in the loop scope
         try:
             job = job_queue.get() # Blocks until a job is available
-            logger.debug(f"Worker processing job: {job.type.name}")
+            queue_size = job_queue.qsize()
+            # Only log queue status if there are pending jobs (reduces noise)
+            if queue_size > 0:
+                logger.info(f"📋 Job queue has {queue_size} pending: {[j.type.name for j in list(job_queue.queue)[:5]]}")
+            # Only log processing for non-health-check jobs
+            if job.type != JobType.CHECK_STREAM_HEALTH:
+                logger.debug(f"Worker processing job: {job.type.name}")
             dispatch(job)
         except Exception as e:
             # Catch unexpected errors during job retrieval or dispatch handling
@@ -224,5 +322,7 @@ logger.info("Worker thread initialized and dispatched.")
 def add_job(job_type: JobType, payload: dict):
     """Adds a job to the central queue."""
     new_job = Job(type=job_type, payload=payload)
-    logger.debug(f"Enqueuing job: {new_job.type.name}")
+    # Only log non-health-check jobs to reduce noise
+    if job_type != JobType.CHECK_STREAM_HEALTH:
+        logger.debug(f"Enqueuing job: {new_job.type.name}")
     job_queue.put(new_job)

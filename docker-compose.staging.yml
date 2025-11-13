@@ -1,0 +1,70 @@
+services:
+  motherstream:
+    container_name: motherstream-staging
+    ports:
+      - "8484:8483"
+    env_file: .env.staging
+    volumes:
+      - ./docker-volume-mounts/staging/stream-recordings:/var/www/streams/stream-recordings
+      - ./docker-volume-mounts/staging/logs:/app/logs
+    networks:
+      - staging-network
+    dns:
+      - 127.0.0.11       # Docker's internal DNS (MUST BE FIRST for service name resolution)
+      - 100.100.100.100  # Tailscale MagicDNS
+      - 8.8.8.8          # Fallback DNS
+
+  frontend:
+    container_name: frontend-staging
+    ports:
+      - "5174:5173"
+    env_file: frontend/.env.staging
+    networks:
+      - staging-network
+
+  nginx-rtmp:
+    container_name: nginx-staging
+    volumes: 
+      - ./nginx-config/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx-config/rtmp.conf:/etc/nginx/rtmp.conf
+      # Staging nginx will be internal only - router handles HTTPS
+      - ./nginx-config/stat.xsl:/var/www/stat.xsl
+      - ./docker-volume-mounts/staging/stream-recordings:/var/www/streams/stream-recordings
+    ports:
+      - "1938:1936"   # Recording port
+      - "8990:8989"   # Different stats port
+    networks:
+      - staging-network
+
+  oryx:
+    container_name: oryx-staging
+    ports:
+      - "1937:1935"   # RTMP publishing port
+      - "2023:2022"   # Oryx API (optional, can also access via nginx-router)
+      # - "8082:8080" # HTTP/HLS playback - now routed through nginx-router
+      - "8001:8000/udp"
+      - "10801:10800/udp"
+    volumes:
+      - ./docker-volume-mounts/staging/oryx/:/data
+    networks:
+      - staging-network
+
+  postgres:
+    container_name: postgres-staging
+    ports:
+      - "5433:5432"
+    env_file: .env.staging
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USER}
+    volumes:
+      - ./docker-volume-mounts/staging/pgdata/data:/var/lib/postgresql/data
+      - ./docker-volume-mounts/staging/pgdata/initdb:/docker-entrypoint-initdb.d
+    networks:
+      - staging-network
+
+networks:
+  staging-network:
+    external: true
+

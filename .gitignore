@@ -8,6 +8,10 @@ ffmpeg.log
 QUEUE.json
 sql_app.db
 .env
+.env.prod
+.env.staging
+frontend/.env.prod
+frontend/.env.staging
 certs/
 certbot/
 ShazamIO
@@ -17,3 +21,8 @@ oryx/
 stream-recordings/
 pgdata/
 pg/
+staging/
+oryx-staging/
+logs/
+tests/e2e/logs2/
+**/*/logs2/

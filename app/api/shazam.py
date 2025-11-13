@@ -17,7 +17,7 @@ process = None
 RATE = 44100           # Sample rate
 CHANNELS = 1           # Number of audio channels
 SECONDS = 10           # Duration to buffer before sending to Shazam
-FFMPEG_INPUT = "rtmp://always12.live/motherstream/live"  # Replace with your RTMP input
+FFMPEG_INPUT = os.getenv("SHAZAM_RTMP_URL", "rtmp://motherstream.live/motherstream/live")
 SONG_DATA = {}
 
 async def recognize_song(shazam, audio_data):

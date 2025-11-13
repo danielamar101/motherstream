@@ -1,0 +1,21 @@
+# Test videos (large files)
+videos/*.mp4
+videos/*.avi
+videos/*.mkv
+videos/*.mov
+
+# Keep the directory
+!videos/.gitkeep
+
+# Test logs
+logs/*.log
+logs/*.pid
+logs/test-users.json
+
+# Keep the directory
+!logs/.gitkeep
+
+# Temporary files
+*.tmp
+*.temp
+

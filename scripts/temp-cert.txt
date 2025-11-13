@@ -1,10 +1,10 @@
-mkdir -p certs/live/always12.live
+mkdir -p certs/live/motherstream.live
 openssl req -x509 -nodes -newkey rsa:2048 \
   -days 1 \
-  -keyout certs/live/always12.live/privkey.pem \
-  -out    certs/live/always12.live/fullchain.pem \
-  -subj   "/CN=always12.live"
-pushd certs/live/always12.live
+  -keyout certs/live/motherstream.live/privkey.pem \
+  -out    certs/live/motherstream.live/fullchain.pem \
+  -subj   "/CN=motherstream.live"
+pushd certs/live/motherstream.live
   ln -sf fullchain.pem cert.pem
   ln -sf fullchain.pem chain.pem
 popd

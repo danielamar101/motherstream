@@ -1,0 +1,11 @@
+services: 
+  certbot:
+    container_name: certbot
+    image: certbot/certbot:latest
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./certbot/www/:/var/www/certbot/:rw
+      - ./certs/:/etc/letsencrypt/:rw
+      - ./logs/:/var/log/letsencrypt/:rw
+    command: certonly -v --webroot --webroot-path /var/www/certbot -d staging.motherstream.live --email itsalways12@gmail.com --agree-tos --force-renewal

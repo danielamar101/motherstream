@@ -105,9 +105,24 @@
     </div>
 
     <script>
+        // Determine the API base URL based on environment
+        function getApiBaseUrl() {
+            const hostname = window.location.hostname;
+            
+            // Check if we're in staging environment
+            if (hostname.includes('staging') || hostname.includes('localhost') || hostname === '127.0.0.1') {
+                // Use staging/local backend
+                return window.location.origin;
+            } else {
+                // Use production backend
+                return 'https://motherstream.live';
+            }
+        }
+
         async function fetchNowPlaying() {
             try {
-                const response = await fetch('https://always12.live/song-json');
+                const apiBaseUrl = getApiBaseUrl();
+                const response = await fetch(`${apiBaseUrl}/backend/song-json`);
                 const json_data = await response.json();
 
                 // Assuming the JSON structure has a 'stream_queue' array with song objects

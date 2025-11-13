@@ -1,10 +1,12 @@
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.templating import Jinja2Templates
+import logging
 
 from app.core.time_manager import TimeManager
 from app.obs import obs_socket_manager_instance
 
+logger = logging.getLogger(__name__)
 templates = Jinja2Templates(directory="static")
 
 from main import process_manager
@@ -112,21 +114,18 @@ async def get_toggle():
 async def toggle_obs_source(
     source_name: str, 
     scene_name: str = "MOTHERSTREAM", 
-    toggle_timespan: float = 1.0, 
     only_off: bool = False
 ):
     """
     Manually toggle any OBS source for testing purposes.
     :param source_name: Name of the source to toggle
     :param scene_name: Name of the scene (default: MOTHERSTREAM)
-    :param toggle_timespan: Time to wait between off/on (default: 1.0 seconds)
     :param only_off: If True, only turn off the source (default: False)
     """
     try:
         obs_socket_manager_instance.toggle_obs_source(
             source_name=source_name,
             scene_name=scene_name,
-            toggle_timespan=toggle_timespan,
             only_off=only_off
         )
         
@@ -234,7 +233,6 @@ async def test_job_toggle(
     source_name: str = "GMOTHERSTREAM",
     scene_name: str = "MOTHERSTREAM", 
     only_off: bool = False,
-    toggle_timespan: float = 1.0
 ):
     """
     Test the job queue system by manually adding a toggle job.
@@ -246,7 +244,6 @@ async def test_job_toggle(
             "source_name": source_name,
             "scene_name": scene_name,
             "only_off": only_off,
-            "toggle_timespan": toggle_timespan
         })
         
         return {
@@ -256,7 +253,6 @@ async def test_job_toggle(
                 "source_name": source_name,
                 "scene_name": scene_name,
                 "only_off": only_off,
-                "toggle_timespan": toggle_timespan
             }
         }
     except Exception as e:
@@ -277,7 +273,6 @@ async def simulate_stream_switch():
         add_job(JobType.TOGGLE_OBS_SRC, payload={
             "source_name": "GMOTHERSTREAM", 
             "only_off": True, 
-            "toggle_timespan": 5
         })
         jobs_added.append("TOGGLE_OBS_SRC (GMOTHERSTREAM off)")
         
@@ -294,6 +289,266 @@ async def simulate_stream_switch():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to simulate stream switch: {str(e)}")
+
+@http_blueprint.post("/debug/test-dynamic-source-switch")
+async def test_dynamic_source_switch(
+    rtmp_url: str = "rtmp://127.0.0.1:1935/live/test",
+    scene_name: str = "MOTHERSTREAM"
+):
+    """
+    Test the new dynamic GStreamer source creation approach.
+    This creates a fresh source with the specified RTMP URL.
+    """
+    try:
+        from app.core.worker import add_job, JobType
+        
+        logger.info(f"Testing dynamic source switch with URL: {rtmp_url}")
+        
+        add_job(JobType.SWITCH_GSTREAMER_SOURCE, payload={
+            "rtmp_url": rtmp_url,
+            "scene_name": scene_name
+        })
+        
+        return {
+            "status": "success",
+            "message": f"Dynamic source switch job enqueued",
+            "rtmp_url": rtmp_url,
+            "scene_name": scene_name,
+            "note": "A new GStreamer source will be created, buffered, and shown when ready. Old source will be cleaned up."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to test dynamic source switch: {str(e)}")
+
+@http_blueprint.post("/debug/set-source-z-offset")
+async def set_source_z_offset(z_offset: int):
+    """
+    Configure how many layers from the top to place dynamically created stream sources.
+    Default is 5 (keeps 5 layers of overlays/text on top of the stream).
+    
+    :param z_offset: Number of layers from the top (0 = top layer, 5 = 5 layers below top, etc.)
+    """
+    try:
+        if z_offset < 0 or z_offset > 50:
+            raise HTTPException(status_code=400, detail="z_offset must be between 0 and 50")
+        
+        obs_socket_manager_instance._source_z_offset = z_offset
+        
+        return {
+            "status": "success",
+            "message": f"Source z-offset updated to {z_offset}",
+            "z_offset": z_offset,
+            "note": "New sources will be placed this many layers below the top. Higher = lower in scene."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to set z-offset: {str(e)}")
+
+@http_blueprint.get("/debug/get-source-z-offset")
+async def get_source_z_offset():
+    """
+    Get the current z-offset setting for dynamically created sources.
+    """
+    try:
+        return {
+            "status": "success",
+            "z_offset": obs_socket_manager_instance._source_z_offset,
+            "description": f"Sources are placed {obs_socket_manager_instance._source_z_offset} layers below the top"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get z-offset: {str(e)}")
+
+@http_blueprint.get("/stream-health/current")
+async def get_current_stream_health():
+    """
+    Get the current health snapshot of the monitored stream.
+    Provides detailed metrics for diagnosing playback issues including
+    real-time visibility/playback state synchronization detection.
+    
+    This endpoint integrates monitoring from obs-stream-switch-monitor.py
+    to detect frozen frames caused by sources becoming visible before ready.
+    """
+    try:
+        from app.core.stream_metrics import stream_health_monitor
+        from app.obs import obs_socket_manager_instance
+        
+        health = stream_health_monitor.get_current_health()
+        
+        # Get current GStreamer source info
+        current_source = obs_socket_manager_instance.current_gstreamer_source
+        
+        # Real-time visibility tracking (from obs-stream-switch-monitor.py)
+        visibility_state = None
+        problematic_state = False
+        
+        if current_source:
+            try:
+                # Get real-time visibility and media state
+                is_visible = obs_socket_manager_instance.is_source_visible(
+                    current_source, 
+                    "MOTHERSTREAM"
+                )
+                media_status = obs_socket_manager_instance.get_media_input_status(current_source)
+                
+                if media_status:
+                    media_state = media_status.get('mediaState')
+                    
+                    # Detect the problematic pattern: visible but not playing
+                    if is_visible and media_state and media_state != "OBS_MEDIA_STATE_PLAYING":
+                        problematic_state = True
+                    
+                    visibility_state = {
+                        "source_name": current_source,
+                        "is_visible": is_visible,
+                        "media_state": media_state,
+                        "media_state_short": media_state.replace("OBS_MEDIA_STATE_", "") if media_state else None,
+                        "problematic": problematic_state,
+                        "issue": f"⚠️ Source visible while in {media_state} state!" if problematic_state else None
+                    }
+            except Exception as e:
+                logger.warning(f"Could not get real-time visibility state: {e}")
+        
+        if not health:
+            return {
+                "status": "no_monitoring",
+                "message": "No active stream health monitoring session",
+                "current_source": current_source,
+                "monitoring_active": stream_health_monitor.monitoring_active,
+                "visibility_state": visibility_state
+            }
+        
+        # Analyze health history for visibility issues
+        history = stream_health_monitor.get_health_history(count=50)
+        visibility_issues_count = sum(
+            1 for h in history 
+            if h.get('visibility_problematic', False)
+        )
+        
+        # Also check for older format (before enhancement)
+        legacy_visibility_issues = sum(
+            1 for h in history 
+            if h.get('is_visible') and h.get('media_state') not in ['OBS_MEDIA_STATE_PLAYING', None]
+        )
+        
+        total_visibility_issues = visibility_issues_count + legacy_visibility_issues
+        
+        return {
+            "status": "success",
+            "health": health,
+            "monitoring_active": stream_health_monitor.monitoring_active,
+            "visibility_state": visibility_state,
+            "visibility_analysis": {
+                "recent_problematic_transitions": total_visibility_issues,
+                "history_size": len(history),
+                "percentage": round((total_visibility_issues / len(history) * 100), 2) if history else 0,
+                "description": "Count of times source was visible while NOT in PLAYING state (causes frozen frames)"
+            }
+        }
+    except Exception as e:
+        logger.exception("Failed to get stream health")
+        raise HTTPException(status_code=500, detail=f"Failed to get stream health: {str(e)}")
+
+@http_blueprint.get("/stream-health/history")
+async def get_stream_health_history(count: int = 20):
+    """
+    Get recent stream health history.
+    
+    :param count: Number of recent snapshots to return (default: 20, max: 100)
+    """
+    try:
+        from app.core.stream_metrics import stream_health_monitor
+        
+        count = min(count, 100)  # Cap at 100
+        history = stream_health_monitor.get_health_history(count)
+        
+        return {
+            "status": "success",
+            "count": len(history),
+            "monitoring_active": stream_health_monitor.monitoring_active,
+            "current_source": stream_health_monitor.current_source,
+            "history": history
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get health history: {str(e)}")
+
+@http_blueprint.post("/stream-health/configure")
+async def configure_stream_health_monitoring(poll_interval: float = 1.0):
+    """
+    Configure stream health monitoring parameters.
+    
+    :param poll_interval: How often to collect metrics in seconds (0.1-10.0)
+    """
+    try:
+        from app.core.stream_metrics import stream_health_monitor
+        
+        if poll_interval < 0.1 or poll_interval > 10.0:
+            raise HTTPException(status_code=400, detail="poll_interval must be between 0.1 and 10.0 seconds")
+        
+        stream_health_monitor.poll_interval = poll_interval
+        
+        return {
+            "status": "success",
+            "message": f"Stream health monitoring configured",
+            "poll_interval": poll_interval,
+            "note": "Changes apply to future monitoring sessions"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to configure monitoring: {str(e)}")
+
+@http_blueprint.post("/stream-health/stop")
+async def stop_stream_health_monitoring():
+    """
+    Manually stop the current stream health monitoring session.
+    Generates a summary report automatically.
+    """
+    try:
+        from app.core.stream_metrics import stream_health_monitor
+        
+        if not stream_health_monitor.monitoring_active:
+            return {
+                "status": "not_active",
+                "message": "No active monitoring session to stop"
+            }
+        
+        current_source = stream_health_monitor.current_source
+        from app.core.stream_metrics import StreamHealthMonitor
+        csv_file = StreamHealthMonitor._shared_csv_file
+        
+        stream_health_monitor.stop_monitoring()
+        
+        return {
+            "status": "success",
+            "message": f"Stopped monitoring for '{current_source}'",
+            "csv_file": csv_file,
+            "note": "Using hourly CSV files - reports generated automatically each hour"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to stop monitoring: {str(e)}")
+
+@http_blueprint.get("/stream-health/status")
+async def get_stream_health_monitoring_status():
+    """
+    Get the status of stream health monitoring system.
+    """
+    try:
+        from app.core.stream_metrics import stream_health_monitor, StreamHealthMonitor
+        
+        return {
+            "status": "success",
+            "monitoring_active": stream_health_monitor.monitoring_active,
+            "current_source": stream_health_monitor.current_source,
+            "rtmp_url": stream_health_monitor.current_rtmp_url,
+            "poll_count": stream_health_monitor.poll_count,
+            "poll_interval": stream_health_monitor.poll_interval,
+            "current_hourly_csv_file": StreamHealthMonitor._shared_csv_file,
+            "current_hour": StreamHealthMonitor._shared_current_hour,
+            "history_size": len(stream_health_monitor.snapshot_history),
+            "note": "Now using hourly CSV files aggregating all streams"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get monitoring status: {str(e)}")
 
 @http_blueprint.get("/obs/connection-health")
 async def get_obs_connection_health():
