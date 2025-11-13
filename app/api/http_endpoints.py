@@ -513,7 +513,8 @@ async def stop_stream_health_monitoring():
             }
         
         current_source = stream_health_monitor.current_source
-        csv_file = stream_health_monitor.current_csv_file
+        from app.core.stream_metrics import StreamHealthMonitor
+        csv_file = StreamHealthMonitor._shared_csv_file
         
         stream_health_monitor.stop_monitoring()
         
@@ -521,7 +522,7 @@ async def stop_stream_health_monitoring():
             "status": "success",
             "message": f"Stopped monitoring for '{current_source}'",
             "csv_file": csv_file,
-            "report_file": csv_file.replace('.csv', '-report.txt') if csv_file else None
+            "note": "Using hourly CSV files - reports generated automatically each hour"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to stop monitoring: {str(e)}")
@@ -532,7 +533,7 @@ async def get_stream_health_monitoring_status():
     Get the status of stream health monitoring system.
     """
     try:
-        from app.core.stream_metrics import stream_health_monitor
+        from app.core.stream_metrics import stream_health_monitor, StreamHealthMonitor
         
         return {
             "status": "success",
@@ -541,8 +542,10 @@ async def get_stream_health_monitoring_status():
             "rtmp_url": stream_health_monitor.current_rtmp_url,
             "poll_count": stream_health_monitor.poll_count,
             "poll_interval": stream_health_monitor.poll_interval,
-            "current_csv_file": stream_health_monitor.current_csv_file,
-            "history_size": len(stream_health_monitor.snapshot_history)
+            "current_hourly_csv_file": StreamHealthMonitor._shared_csv_file,
+            "current_hour": StreamHealthMonitor._shared_current_hour,
+            "history_size": len(stream_health_monitor.snapshot_history),
+            "note": "Now using hourly CSV files aggregating all streams"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get monitoring status: {str(e)}")

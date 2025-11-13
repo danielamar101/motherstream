@@ -71,7 +71,16 @@ class StreamHealthMonitor:
     
     Collects detailed metrics about GStreamer sources to diagnose
     playback smoothness issues and other problems.
+    
+    Now uses hour-based CSV files that aggregate all streams.
     """
+    
+    # Class-level shared file handles (for hour-based aggregation)
+    _shared_csv_file: Optional[str] = None
+    _shared_csv_writer = None
+    _shared_csv_file_handle = None
+    _shared_current_hour: Optional[str] = None
+    _file_lock = threading.Lock()  # Thread-safe file access
     
     def __init__(self, metrics_dir: str = "/app/logs/stream-metrics"):
         self.metrics_dir = metrics_dir
@@ -83,19 +92,14 @@ class StreamHealthMonitor:
         self.monitoring_active = False
         self.poll_count = 0
         
-        # Metrics history (keep last 100 snapshots in memory)
-        self.snapshot_history: deque = deque(maxlen=100)
+        # Metrics history (keep last 500 snapshots in memory for hourly reports)
+        self.snapshot_history: deque = deque(maxlen=500)
         
-        # CSV file for current session
-        self.current_csv_file: Optional[str] = None
-        self.csv_writer = None
-        self.csv_file_handle = None
-        
-        # GStreamer pipeline tracking
+        # GStreamer pipeline tracking (per-stream)
         self.last_dropped_frames = 0
         self.last_dropped_frames_time = 0
         
-        # Choppiness detection tracking
+        # Choppiness detection tracking (per-stream)
         self.last_media_time = None
         self.media_time_history = deque(maxlen=10)  # Track last 10 media time readings
         self.fps_history = deque(maxlen=10)  # Track last 10 FPS readings
@@ -111,9 +115,12 @@ class StreamHealthMonitor:
         # Reference to OBS manager (will be set externally)
         self.obs_manager = None
         
-        # Track last logged status to avoid log spam
+        # Track last logged status to avoid log spam (per-stream)
         self.last_health_status = None  # Track last health score category
         self.last_pipeline_status = None  # Track last pipeline health status
+        
+        # Hourly report generation
+        self.last_report_hour: Optional[str] = None
         
     def start_monitoring(self, source_name: str, rtmp_url: str, scene_name: str = "MOTHERSTREAM"):
         """Start monitoring a specific source."""
@@ -128,42 +135,20 @@ class StreamHealthMonitor:
         self.poll_count = 0
         self.stop_event.clear()
         
-        # Create new CSV file for this session
-        timestamp_str = datetime.now().strftime("%Y%m%d-%H%M%S")
-        safe_source_name = source_name.replace("/", "-").replace(" ", "_")
-        self.current_csv_file = os.path.join(
-            self.metrics_dir, 
-            f"stream-health-{safe_source_name}-{timestamp_str}.csv"
-        )
+        # Note: Hourly CSV file will be created lazily when first data is written
+        # This prevents empty files when no streams are active
         
-        # Open CSV file
-        self.csv_file_handle = open(self.current_csv_file, 'w', newline='')
-        self.csv_writer = csv.DictWriter(
-            self.csv_file_handle,
-            fieldnames=[
-                'timestamp', 'timestamp_str', 'source_name', 'rtmp_url',
-                'media_state', 'media_duration', 'media_time',
-                'is_visible', 'scene_name', 'obs_fps', 'dropped_frames',
-                'buffer_level', 'gstreamer_state', 'pipeline_healthy',
-                'pipeline_warnings', 'frame_drop_rate', 'health_score', 
-                'issues', 'poll_count',
-                'visibility_problematic', 'visibility_issue_type'  # NEW: visibility sync tracking
-            ]
-        )
-        self.csv_writer.writeheader()
-        self.csv_file_handle.flush()
-        
-        # Reset GStreamer tracking
+        # Reset GStreamer tracking (per-stream)
         self.last_dropped_frames = 0
         self.last_dropped_frames_time = 0
         
-        # Reset choppiness detection tracking
+        # Reset choppiness detection tracking (per-stream)
         self.last_media_time = None
         self.media_time_history.clear()
         self.fps_history.clear()
         self.stall_count = 0
         
-        # Reset status tracking to avoid log spam
+        # Reset status tracking to avoid log spam (per-stream)
         self.last_health_status = None
         self.last_pipeline_status = None
         
@@ -175,7 +160,7 @@ class StreamHealthMonitor:
         )
         self.monitor_thread.start()
         
-        logger.info(f"Started stream health monitoring for '{source_name}' -> {self.current_csv_file}")
+        logger.info(f"Started stream health monitoring for '{source_name}' (hourly CSV will be created on first data)")
         
     def stop_monitoring(self):
         """Stop current monitoring session."""
@@ -188,17 +173,103 @@ class StreamHealthMonitor:
         if self.monitor_thread:
             self.monitor_thread.join(timeout=5)
         
-        if self.csv_file_handle:
-            self.csv_file_handle.close()
-            self.csv_file_handle = None
-            self.csv_writer = None
-        
-        # Generate summary report
-        if self.current_csv_file:
-            self._generate_summary_report()
+        # Note: We don't close the shared CSV file here - it stays open for other streams
+        # Hourly reports are generated automatically via _check_and_rotate_hourly_file()
         
         logger.info(f"Stopped stream health monitoring for '{self.current_source}'")
         self.current_source = None
+    
+    def _get_current_hour_string(self) -> str:
+        """Get current hour as a string for file naming (e.g., '20251113-03')."""
+        return datetime.now().strftime("%Y%m%d-%H")
+    
+    def _ensure_hourly_csv_file(self):
+        """
+        Ensure the hourly CSV file exists and is open.
+        Creates a new file if needed, or reuses existing file for the current hour.
+        Thread-safe.
+        """
+        current_hour = self._get_current_hour_string()
+        
+        with StreamHealthMonitor._file_lock:
+            # Check if we need to create/rotate to a new file
+            if (StreamHealthMonitor._shared_csv_file is None or 
+                StreamHealthMonitor._shared_current_hour != current_hour):
+                
+                # Close previous file if open
+                if StreamHealthMonitor._shared_csv_file_handle:
+                    logger.info(f"Closing previous hourly CSV file: {StreamHealthMonitor._shared_csv_file}")
+                    StreamHealthMonitor._shared_csv_file_handle.close()
+                
+                # Create new hourly file
+                StreamHealthMonitor._shared_csv_file = os.path.join(
+                    self.metrics_dir,
+                    f"stream-health-{current_hour}0000.csv"
+                )
+                
+                # Open in append mode (in case file already exists from previous run)
+                file_exists = os.path.exists(StreamHealthMonitor._shared_csv_file)
+                StreamHealthMonitor._shared_csv_file_handle = open(
+                    StreamHealthMonitor._shared_csv_file, 'a', newline=''
+                )
+                
+                StreamHealthMonitor._shared_csv_writer = csv.DictWriter(
+                    StreamHealthMonitor._shared_csv_file_handle,
+                    fieldnames=[
+                        'timestamp', 'timestamp_str', 'source_name', 'rtmp_url',
+                        'media_state', 'media_duration', 'media_time',
+                        'is_visible', 'scene_name', 'obs_fps', 'dropped_frames',
+                        'buffer_level', 'gstreamer_state', 'pipeline_healthy',
+                        'pipeline_warnings', 'frame_drop_rate', 'health_score', 
+                        'issues', 'poll_count',
+                        'visibility_problematic', 'visibility_issue_type'
+                    ]
+                )
+                
+                # Write header only if file is new
+                if not file_exists:
+                    StreamHealthMonitor._shared_csv_writer.writeheader()
+                
+                StreamHealthMonitor._shared_csv_file_handle.flush()
+                StreamHealthMonitor._shared_current_hour = current_hour
+                
+                logger.info(f"{'Created' if not file_exists else 'Opened'} hourly CSV file: {StreamHealthMonitor._shared_csv_file}")
+    
+    def _check_and_rotate_hourly_file(self):
+        """
+        Check if we've entered a new hour and rotate files if needed.
+        Also generates report for the previous hour.
+        Thread-safe.
+        
+        Note: Does NOT create a new file immediately - new file is created
+        only when there's actual data to write (prevents empty files).
+        """
+        current_hour = self._get_current_hour_string()
+        
+        with StreamHealthMonitor._file_lock:
+            if (StreamHealthMonitor._shared_current_hour and 
+                StreamHealthMonitor._shared_current_hour != current_hour):
+                
+                # We've entered a new hour! Close previous file and generate report
+                previous_csv = StreamHealthMonitor._shared_csv_file
+                logger.info(f"Hour changed: {StreamHealthMonitor._shared_current_hour} -> {current_hour}")
+                
+                # Close the previous file
+                if StreamHealthMonitor._shared_csv_file_handle:
+                    StreamHealthMonitor._shared_csv_file_handle.close()
+                    logger.info(f"Closed previous hourly CSV file: {StreamHealthMonitor._shared_csv_file}")
+                
+                # Generate hourly report for previous file
+                if previous_csv and os.path.exists(previous_csv):
+                    self._generate_hourly_report(previous_csv)
+                
+                # Reset file handles - new file will be created when next data is written
+                StreamHealthMonitor._shared_csv_file = None
+                StreamHealthMonitor._shared_csv_writer = None
+                StreamHealthMonitor._shared_csv_file_handle = None
+                StreamHealthMonitor._shared_current_hour = None
+                
+                logger.info("File handles reset - new file will be created when streams are active")
         
     def _monitoring_loop(self):
         """Background thread that collects metrics at regular intervals."""
@@ -206,6 +277,9 @@ class StreamHealthMonitor:
         
         while not self.stop_event.is_set():
             try:
+                # Check if we need to rotate to a new hourly file
+                self._check_and_rotate_hourly_file()
+                
                 snapshot = self._collect_snapshot()
                 if snapshot:
                     self._record_snapshot(snapshot)
@@ -558,13 +632,35 @@ class StreamHealthMonitor:
         # Add to history
         self.snapshot_history.append(snapshot)
         
-        # Write to CSV
-        if self.csv_writer:
-            row = asdict(snapshot)
-            row['issues'] = '; '.join(snapshot.issues)  # Convert list to string
-            row['pipeline_warnings'] = '; '.join(snapshot.pipeline_warnings)  # Convert list to string
-            self.csv_writer.writerow(row)
-            self.csv_file_handle.flush()
+        # Ensure hourly CSV file exists before writing (lazy creation - thread-safe)
+        # This prevents empty files when no streams are active
+        self._ensure_hourly_csv_file()
+        
+        # Write to shared hourly CSV (thread-safe)
+        with StreamHealthMonitor._file_lock:
+            if StreamHealthMonitor._shared_csv_writer:
+                row = asdict(snapshot)
+                # Convert lists to strings (empty string if no items)
+                row['issues'] = '; '.join(snapshot.issues) if snapshot.issues else ''
+                row['pipeline_warnings'] = '; '.join(snapshot.pipeline_warnings) if snapshot.pipeline_warnings else ''
+                
+                # Make numeric None values explicit for better CSV readability
+                # This prevents empty fields and makes data analysis easier
+                if row['buffer_level'] is None:
+                    row['buffer_level'] = ''  # Keep empty - not available from OBS WebSocket
+                if row['frame_drop_rate'] is None:
+                    row['frame_drop_rate'] = 0.0  # Explicit 0 when not actively dropping frames
+                if row['media_duration'] is None:
+                    row['media_duration'] = 0
+                if row['media_time'] is None:
+                    row['media_time'] = 0
+                if row['obs_fps'] is None:
+                    row['obs_fps'] = 0.0
+                if row['dropped_frames'] is None:
+                    row['dropped_frames'] = 0
+                    
+                StreamHealthMonitor._shared_csv_writer.writerow(row)
+                StreamHealthMonitor._shared_csv_file_handle.flush()
         
         # Categorize health status for change detection
         if snapshot.health_score >= 90:
@@ -606,73 +702,141 @@ class StreamHealthMonitor:
                 )
             self.last_pipeline_status = pipeline_status
     
-    def _generate_summary_report(self):
-        """Generate a human-readable summary report."""
-        if not self.current_csv_file:
+    def _generate_hourly_report(self, csv_file: str):
+        """
+        Generate a human-readable hourly report for ALL streams in the CSV file.
+        Reads the CSV file and aggregates stats across all sources.
+        """
+        if not csv_file or not os.path.exists(csv_file):
             return
         
-        report_file = self.current_csv_file.replace('.csv', '-report.txt')
+        report_file = csv_file.replace('.csv', '-report.txt')
         
         try:
+            # Read CSV file and aggregate data across all sources
+            rows = []
+            with open(csv_file, 'r') as csvf:
+                reader = csv.DictReader(csvf)
+                rows = list(reader)
+            
+            if not rows:
+                logger.warning(f"No data in CSV file {csv_file}, skipping report generation")
+                return
+            
+            # Extract hour timestamp from filename
+            filename = os.path.basename(csv_file)
+            hour_str = filename.replace('stream-health-', '').replace('.csv', '')
+            
+            # Aggregate stats across all sources
+            sources = {}  # source_name -> stats
+            all_health_scores = []
+            all_issues = {}
+            all_states = {}
+            total_polls = len(rows)
+            
+            for row in rows:
+                source_name = row.get('source_name', 'UNKNOWN')
+                
+                # Initialize source stats if new
+                if source_name not in sources:
+                    sources[source_name] = {
+                        'polls': 0,
+                        'health_scores': [],
+                        'issues': {},
+                        'states': {}
+                    }
+                
+                # Aggregate per-source
+                sources[source_name]['polls'] += 1
+                
+                try:
+                    health_score = float(row.get('health_score', 0))
+                    sources[source_name]['health_scores'].append(health_score)
+                    all_health_scores.append(health_score)
+                except (ValueError, TypeError):
+                    pass
+                
+                # Count issues
+                issues_str = row.get('issues', '')
+                if issues_str:
+                    for issue in issues_str.split('; '):
+                        if issue:
+                            sources[source_name]['issues'][issue] = sources[source_name]['issues'].get(issue, 0) + 1
+                            all_issues[issue] = all_issues.get(issue, 0) + 1
+                
+                # Track states
+                state = row.get('media_state', 'UNKNOWN')
+                sources[source_name]['states'][state] = sources[source_name]['states'].get(state, 0) + 1
+                all_states[state] = all_states.get(state, 0) + 1
+            
+            # Write report
             with open(report_file, 'w') as f:
                 f.write("=" * 70 + "\n")
-                f.write("STREAM HEALTH MONITORING REPORT\n")
+                f.write("HOURLY STREAM HEALTH MONITORING REPORT\n")
                 f.write("=" * 70 + "\n\n")
                 
-                f.write(f"Source: {self.current_source}\n")
-                f.write(f"RTMP URL: {self.current_rtmp_url}\n")
-                f.write(f"Total Polls: {self.poll_count}\n")
-                f.write(f"Duration: {self.poll_count * self.poll_interval:.1f} seconds\n")
-                f.write(f"Data File: {os.path.basename(self.current_csv_file)}\n")
+                f.write(f"Time Period: {hour_str}\n")
+                f.write(f"Data File: {os.path.basename(csv_file)}\n")
+                f.write(f"Total Streams: {len(sources)}\n")
+                f.write(f"Total Data Points: {total_polls}\n")
                 f.write("\n")
                 
-                # Analyze history
-                if self.snapshot_history:
-                    health_scores = [s.health_score for s in self.snapshot_history]
-                    avg_health = sum(health_scores) / len(health_scores)
-                    min_health = min(health_scores)
-                    max_health = max(health_scores)
+                # Overall health summary
+                if all_health_scores:
+                    avg_health = sum(all_health_scores) / len(all_health_scores)
+                    min_health = min(all_health_scores)
+                    max_health = max(all_health_scores)
                     
-                    f.write("HEALTH SUMMARY:\n")
+                    f.write("OVERALL HEALTH SUMMARY:\n")
                     f.write("-" * 70 + "\n")
                     f.write(f"  Average Health Score: {avg_health:.1f}/100\n")
                     f.write(f"  Min Health Score: {min_health:.1f}/100\n")
                     f.write(f"  Max Health Score: {max_health:.1f}/100\n")
                     f.write("\n")
-                    
-                    # Count issues
-                    all_issues = {}
-                    for snapshot in self.snapshot_history:
-                        for issue in snapshot.issues:
-                            all_issues[issue] = all_issues.get(issue, 0) + 1
-                    
-                    if all_issues:
-                        f.write("ISSUES DETECTED:\n")
-                        f.write("-" * 70 + "\n")
-                        for issue, count in sorted(all_issues.items(), key=lambda x: -x[1]):
-                            percentage = (count / len(self.snapshot_history)) * 100
-                            f.write(f"  {issue}: {count} times ({percentage:.1f}% of polls)\n")
-                        f.write("\n")
-                    else:
-                        f.write("No issues detected! ✓\n\n")
-                    
-                    # State distribution
-                    state_counts = {}
-                    for snapshot in self.snapshot_history:
-                        state = snapshot.media_state or "UNKNOWN"
-                        state_counts[state] = state_counts.get(state, 0) + 1
-                    
-                    f.write("MEDIA STATE DISTRIBUTION:\n")
+                
+                # Per-stream breakdown
+                f.write("PER-STREAM BREAKDOWN:\n")
+                f.write("-" * 70 + "\n")
+                for source_name, stats in sorted(sources.items()):
+                    if stats['health_scores']:
+                        avg = sum(stats['health_scores']) / len(stats['health_scores'])
+                        f.write(f"\n  {source_name}:\n")
+                        f.write(f"    Data Points: {stats['polls']}\n")
+                        f.write(f"    Avg Health: {avg:.1f}/100\n")
+                        
+                        if stats['issues']:
+                            f.write(f"    Issues: {', '.join(stats['issues'].keys())}\n")
+                        else:
+                            f.write(f"    Issues: None ✓\n")
+                f.write("\n")
+                
+                # All issues detected
+                if all_issues:
+                    f.write("ALL ISSUES DETECTED:\n")
                     f.write("-" * 70 + "\n")
-                    for state, count in sorted(state_counts.items(), key=lambda x: -x[1]):
-                        percentage = (count / len(self.snapshot_history)) * 100
-                        f.write(f"  {state}: {count} polls ({percentage:.1f}%)\n")
+                    for issue, count in sorted(all_issues.items(), key=lambda x: -x[1]):
+                        percentage = (count / total_polls) * 100
+                        f.write(f"  {issue}: {count} times ({percentage:.1f}% of polls)\n")
                     f.write("\n")
-                    
-                    # Recommendations
-                    f.write("RECOMMENDATIONS:\n")
+                else:
+                    f.write("ALL ISSUES DETECTED:\n")
                     f.write("-" * 70 + "\n")
-                    
+                    f.write("  No issues detected! ✓\n\n")
+                
+                # State distribution
+                f.write("MEDIA STATE DISTRIBUTION:\n")
+                f.write("-" * 70 + "\n")
+                for state, count in sorted(all_states.items(), key=lambda x: -x[1]):
+                    percentage = (count / total_polls) * 100
+                    f.write(f"  {state}: {count} polls ({percentage:.1f}%)\n")
+                f.write("\n")
+                
+                # Recommendations
+                f.write("RECOMMENDATIONS:\n")
+                f.write("-" * 70 + "\n")
+                
+                if all_health_scores:
+                    avg_health = sum(all_health_scores) / len(all_health_scores)
                     if avg_health >= 90:
                         f.write("  ✓ Stream health is excellent! No action needed.\n")
                     elif avg_health >= 70:
@@ -686,23 +850,22 @@ class StreamHealthMonitor:
                             f.write("  → High buffering detected - check network bandwidth\n")
                             f.write("  → Consider reducing stream bitrate\n")
                         
-                        if "LOW_FPS" in str(all_issues):
+                        if any("LOW_FPS" in issue for issue in all_issues.keys()):
                             f.write("  → Low FPS detected - check system resources\n")
                             f.write("  → Reduce OBS encoding load\n")
                         
-                        if "VISIBLE_NOT_PLAYING" in all_issues:
+                        if "VISIBLE_NOT_PLAYING" in all_issues or "VISIBLE_WHILE_BUFFERING" in all_issues:
                             f.write("  → Source visible before ready - increase buffer time\n")
-                    
-                    f.write("\n")
                 
+                f.write("\n")
                 f.write("=" * 70 + "\n")
                 f.write("End of Report\n")
                 f.write("=" * 70 + "\n")
             
-            logger.info(f"Generated health report: {report_file}")
+            logger.info(f"Generated hourly health report: {report_file}")
             
         except Exception as e:
-            logger.error(f"Failed to generate summary report: {e}", exc_info=True)
+            logger.error(f"Failed to generate hourly report: {e}", exc_info=True)
     
     def get_current_health(self) -> Optional[Dict[str, Any]]:
         """Get the most recent health snapshot as a dictionary."""
@@ -717,6 +880,15 @@ class StreamHealthMonitor:
         history_list = list(self.snapshot_history)
         recent = history_list[-count:] if len(history_list) > count else history_list
         return [asdict(s) for s in recent]
+    
+    @classmethod
+    def generate_report_for_csv(cls, csv_file: str):
+        """
+        Convenience method to manually generate a report for any CSV file.
+        Useful for regenerating reports or creating reports for existing files.
+        """
+        instance = cls()
+        instance._generate_hourly_report(csv_file)
 
 
 # Global instance

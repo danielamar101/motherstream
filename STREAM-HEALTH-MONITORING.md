@@ -74,22 +74,79 @@ Every second (configurable), the system collects:
 4. Calculates health score
 5. Detects issues
 6. Logs to CSV
-7. Keeps last 100 snapshots in memory
+7. Keeps last 500 snapshots in memory
+
+### 🆕 Hourly Aggregation System
+
+**Why hourly files?**
+- **Consolidation**: All streams in one place for easier analysis
+- **Efficiency**: Fewer files to manage (24 per day vs. hundreds)
+- **Comparison**: Easy to compare multiple streams side-by-side
+- **Automation**: Reports generated automatically every hour
+- **No empty files**: Files are only created when streams are actually active
+
+**How it works:**
+1. All stream monitors write to the **same hourly CSV file**
+2. File naming: `stream-health-YYYYMMDD-HH0000.csv` (hour-based)
+3. **Lazy creation**: Files are only created when there's actual stream data (no empty files!)
+4. At the top of each hour:
+   - Current file is closed
+   - Report is automatically generated for that hour
+   - New file is created only when streams become active
+5. Thread-safe: Multiple streams can write simultaneously
 
 ### File Output
 
-**CSV File**: `logs/stream-metrics/stream-health-SOURCENAME-TIMESTAMP.csv`
+**🆕 HOURLY CSV FILES** - All streams are now aggregated into hour-long files:
+
+**CSV File**: `logs/stream-metrics/stream-health-YYYYMMDD-HH0000.csv`
+- **One file per hour** containing ALL streams
+- Automatically rotates at the top of each hour
+- Example: `stream-health-20251113-030000.csv` (3:00 AM - 3:59 AM)
+
 ```csv
 timestamp,timestamp_str,source_name,rtmp_url,media_state,media_duration,media_time,is_visible,scene_name,obs_fps,dropped_frames,buffer_level,health_score,issues,poll_count
-1699876543.123,2023-11-13 10:15:43.123,GMOTHERSTREAM_1,rtmp://...,OBS_MEDIA_STATE_PLAYING,0,0,True,MOTHERSTREAM,29.97,0,,100.0,,1
-1699876544.456,2023-11-13 10:15:44.456,GMOTHERSTREAM_1,rtmp://...,OBS_MEDIA_STATE_BUFFERING,0,0,True,MOTHERSTREAM,29.97,0,,70.0,BUFFERING,2
+1699876543.123,2023-11-13 03:15:43.123,GMOTHERSTREAM_1,rtmp://...,OBS_MEDIA_STATE_PLAYING,0,1234,True,MOTHERSTREAM,30.0,0,,100.0,,1
+1699876544.456,2023-11-13 03:15:44.456,GMOTHERSTREAM_2,rtmp://...,OBS_MEDIA_STATE_PLAYING,0,5678,True,MOTHERSTREAM,30.0,0,,100.0,,1
+1699876545.789,2023-11-13 03:15:45.789,GMOTHERSTREAM_1,rtmp://...,OBS_MEDIA_STATE_PLAYING,0,2234,True,MOTHERSTREAM,30.0,0,,100.0,,2
 ```
 
-**Report File**: `logs/stream-metrics/stream-health-SOURCENAME-TIMESTAMP-report.txt`
-- Health summary (avg/min/max scores)
-- Issue frequency analysis
-- Media state distribution
+**🆕 HOURLY REPORT FILES** - Generated automatically each hour:
+
+**Report File**: `logs/stream-metrics/stream-health-YYYYMMDD-HH0000-report.txt`
+- Health summary for **ALL streams** in that hour
+- Per-stream breakdown with individual stats
+- Aggregate issue frequency analysis
+- Media state distribution across all streams
 - Actionable recommendations
+
+Example report structure:
+```
+======================================================================
+HOURLY STREAM HEALTH MONITORING REPORT
+======================================================================
+
+Time Period: 20251113-03
+Total Streams: 4
+Total Data Points: 3600
+
+OVERALL HEALTH SUMMARY:
+  Average Health Score: 94.5/100
+  Min Health Score: 50.0/100
+  Max Health Score: 100.0/100
+
+PER-STREAM BREAKDOWN:
+  GMOTHERSTREAM_1:
+    Data Points: 900
+    Avg Health: 98.2/100
+    Issues: None ✓
+    
+  GMOTHERSTREAM_2:
+    Data Points: 900
+    Avg Health: 92.1/100
+    Issues: CHOPPY_STALLED, BUFFERING
+...
+```
 
 ## Usage
 
@@ -141,8 +198,10 @@ curl http://localhost:8000/stream-health/status
   "rtmp_url": "rtmp://127.0.0.1:1935/motherstream/live",
   "poll_count": 127,
   "poll_interval": 1.0,
-  "current_csv_file": "logs/stream-metrics/stream-health-GMOTHERSTREAM_2-20231113-101543.csv",
-  "history_size": 100
+  "current_hourly_csv_file": "logs/stream-metrics/stream-health-20251113-030000.csv",
+  "current_hour": "20251113-03",
+  "history_size": 500,
+  "note": "Now using hourly CSV files aggregating all streams"
 }
 ```
 
@@ -156,10 +215,10 @@ curl -X POST "http://localhost:8000/stream-health/configure?poll_interval=0.5"
 curl -X POST "http://localhost:8000/stream-health/configure?poll_interval=2.0"
 ```
 
-### 5. Manual Stop & Generate Report
+### 5. Manual Stop Monitoring
 
 ```bash
-# Stop monitoring and get report
+# Stop monitoring current source
 curl -X POST http://localhost:8000/stream-health/stop
 ```
 
@@ -168,10 +227,29 @@ curl -X POST http://localhost:8000/stream-health/stop
 {
   "status": "success",
   "message": "Stopped monitoring for 'GMOTHERSTREAM_2'",
-  "csv_file": "logs/stream-metrics/stream-health-GMOTHERSTREAM_2-20231113-101543.csv",
-  "report_file": "logs/stream-metrics/stream-health-GMOTHERSTREAM_2-20231113-101543-report.txt"
+  "csv_file": "logs/stream-metrics/stream-health-20251113-030000.csv",
+  "note": "Using hourly CSV files - reports generated automatically each hour"
 }
 ```
+
+### 6. Manual Report Generation
+
+**🆕 Generate reports for existing CSV files:**
+
+```python
+from app.core.stream_metrics import StreamHealthMonitor
+
+# Generate or regenerate report for any hourly CSV file
+StreamHealthMonitor.generate_report_for_csv(
+    "/app/logs/stream-metrics/stream-health-20251113-030000.csv"
+)
+# Creates: stream-health-20251113-030000-report.txt
+```
+
+This is useful for:
+- Regenerating reports after adjusting metrics
+- Creating reports for archived CSV files
+- Analysis of historical data
 
 ## Real-Time Monitoring Dashboard
 

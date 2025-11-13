@@ -48,6 +48,8 @@ class OBSSocketManager():
         self._max_reconnect_attempts = 5
         self._reconnect_delay = 5  # Start with 5 second delay
         self._last_reconnect_attempt = 0  # Timestamp of last reconnect attempt for throttling
+        self._reconnect_cooldown = 60  # After max attempts, wait 60 seconds before resetting
+        self._last_error_log = 0  # Timestamp of last error log to prevent spam
         
         # Streaming monitoring and auto-start
         self._streaming_monitor_enabled = False  # Disabled by default
@@ -270,14 +272,28 @@ class OBSSocketManager():
             return False
 
     def _attempt_reconnect(self):
-        """Attempt to reconnect to OBS with exponential backoff."""
+        """Attempt to reconnect to OBS with exponential backoff and cooldown period."""
+        current_time = time.time()
+        
+        # If max attempts reached, check if cooldown period has passed
         if self._reconnect_attempts >= self._max_reconnect_attempts:
-            logger.error(f"Max reconnection attempts ({self._max_reconnect_attempts}) reached. Giving up.")
-            return
+            time_since_last_attempt = current_time - self._last_reconnect_attempt
+            
+            # If cooldown period has passed, reset attempts and try again
+            if time_since_last_attempt >= self._reconnect_cooldown:
+                logger.info(f"Reconnection cooldown period ({self._reconnect_cooldown}s) elapsed. Resetting reconnection attempts.")
+                self._reconnect_attempts = 0
+                self._last_error_log = 0
+            else:
+                # Still in cooldown - only log error once per minute to avoid spam
+                if current_time - self._last_error_log >= 60:
+                    time_remaining = self._reconnect_cooldown - time_since_last_attempt
+                    logger.error(f"Max reconnection attempts ({self._max_reconnect_attempts}) reached. Will retry in {time_remaining:.0f}s.")
+                    self._last_error_log = current_time
+                return
 
         # Calculate required wait time using exponential backoff
         wait_time = min(self._reconnect_delay * (2 ** self._reconnect_attempts), 60)
-        current_time = time.time()
         
         # Check if enough time has passed since last reconnection attempt (throttling)
         time_since_last_attempt = current_time - self._last_reconnect_attempt
@@ -314,7 +330,12 @@ class OBSSocketManager():
     def ensure_connection(self):
         """Ensure connection is healthy before making requests."""
         if not self._connection_healthy:
-            logger.warning("OBS connection is not healthy, attempting immediate reconnect")
+            # Only log warning once per minute to avoid spam
+            current_time = time.time()
+            if current_time - self._last_error_log >= 60:
+                logger.warning("OBS connection is not healthy, attempting reconnect")
+                self._last_error_log = current_time
+            
             self._attempt_reconnect()
             
         if not self._connection_healthy:
@@ -369,7 +390,8 @@ class OBSSocketManager():
             return is_visible
         except OBSOperationalError as e:
             # Source doesn't exist - this is not a connection issue
-            logger.error(f"OBS operational error while checking source visibility: {e}")
+            # Log at debug level to avoid spam when source is being/has been removed
+            logger.debug(f"OBS operational error while checking source visibility: {e}")
             return False
         except WebSocketConnectionClosedException as e:
             # Connection error - mark unhealthy
@@ -650,6 +672,15 @@ class OBSSocketManager():
             bool: True if successful, False otherwise
         """
         logger.info(f"Removing source: {source_name}")
+        
+        # Stop health monitoring for this source if it's currently being monitored
+        if self.stream_health_monitor and self.stream_health_monitor.monitoring_active:
+            if self.stream_health_monitor.current_source == source_name:
+                try:
+                    logger.info(f"Stopping health monitoring for '{source_name}' before removal")
+                    self.stream_health_monitor.stop_monitoring()
+                except Exception as e:
+                    logger.warning(f"Failed to stop health monitoring: {e}")
         
         with obs_lock:
             try:
