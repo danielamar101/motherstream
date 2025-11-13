@@ -5,8 +5,8 @@ services:
       - "8484:8483"
     env_file: .env.staging
     volumes:
-      - ./staging/stream-recordings:/var/www/streams/stream-recordings
-      - ./staging/logs:/app/logs
+      - ./docker-volume-mounts/staging/stream-recordings:/var/www/streams/stream-recordings
+      - ./docker-volume-mounts/staging/logs:/app/logs
     networks:
       - staging-network
     dns:
@@ -29,7 +29,7 @@ services:
       - ./nginx-config/rtmp.conf:/etc/nginx/rtmp.conf
       # Staging nginx will be internal only - router handles HTTPS
       - ./nginx-config/stat.xsl:/var/www/stat.xsl
-      - ./staging/stream-recordings:/var/www/streams/stream-recordings
+      - ./docker-volume-mounts/staging/stream-recordings:/var/www/streams/stream-recordings
     ports:
       - "1938:1936"   # Recording port
       - "8990:8989"   # Different stats port
@@ -45,7 +45,7 @@ services:
       - "8001:8000/udp"
       - "10801:10800/udp"
     volumes:
-      - ./staging/oryx/:/data
+      - ./docker-volume-mounts/staging/oryx/:/data
     networks:
       - staging-network
 
@@ -59,8 +59,8 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_USER: ${DB_USER}
     volumes:
-      - ./staging/pgdata/data:/var/lib/postgresql/data
-      - ./staging/pgdata/initdb:/docker-entrypoint-initdb.d
+      - ./docker-volume-mounts/staging/pgdata/data:/var/lib/postgresql/data
+      - ./docker-volume-mounts/staging/pgdata/initdb:/docker-entrypoint-initdb.d
     networks:
       - staging-network
 

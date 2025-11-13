@@ -7,3 +7,4 @@ stream-recordings/
 .git/
 .venv/
 pgdata.tmp/
+docker-volume-mounts
