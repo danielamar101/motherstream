@@ -238,7 +238,7 @@ class StreamHealthMonitor:
     def _check_and_rotate_hourly_file(self):
         """
         Check if we've entered a new hour and rotate files if needed.
-        Also generates report for the previous hour.
+        Generates report ONLY if a file was actually created (has data).
         Thread-safe.
         
         Note: Does NOT create a new file immediately - new file is created
@@ -250,18 +250,25 @@ class StreamHealthMonitor:
             if (StreamHealthMonitor._shared_current_hour and 
                 StreamHealthMonitor._shared_current_hour != current_hour):
                 
-                # We've entered a new hour! Close previous file and generate report
+                # We've entered a new hour!
                 previous_csv = StreamHealthMonitor._shared_csv_file
-                logger.info(f"Hour changed: {StreamHealthMonitor._shared_current_hour} -> {current_hour}")
+                previous_hour = StreamHealthMonitor._shared_current_hour
+                logger.info(f"Hour changed: {previous_hour} -> {current_hour}")
                 
-                # Close the previous file
+                # Close the previous file if it exists
                 if StreamHealthMonitor._shared_csv_file_handle:
                     StreamHealthMonitor._shared_csv_file_handle.close()
-                    logger.info(f"Closed previous hourly CSV file: {StreamHealthMonitor._shared_csv_file}")
-                
-                # Generate hourly report for previous file
-                if previous_csv and os.path.exists(previous_csv):
-                    self._generate_hourly_report(previous_csv)
+                    logger.info(f"Closed previous hourly CSV file: {previous_csv}")
+                    
+                    # Generate hourly report ONLY if file exists and was actually used
+                    # (file exists means data was written to it)
+                    if previous_csv and os.path.exists(previous_csv):
+                        logger.info(f"Generating hourly report for {previous_hour}")
+                        self._generate_hourly_report(previous_csv)
+                    else:
+                        logger.debug(f"No CSV file for hour {previous_hour}, skipping report generation")
+                else:
+                    logger.debug(f"No active file for hour {previous_hour} (no streams were monitored), skipping report generation")
                 
                 # Reset file handles - new file will be created when next data is written
                 StreamHealthMonitor._shared_csv_file = None
