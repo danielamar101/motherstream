@@ -6,7 +6,7 @@ This guide explains how to set up and manage the production and staging environm
 
 Both production and staging environments run on the same server with:
 - **Production**: `motherstream.live` (HTTP/HTTPS frontend and backend)
-- **Production RTMP**: `always12.live:1935` (RTMP streaming only - legacy domain)
+- **Production RTMP**: `motherstream.live:1935` (RTMP streaming only - legacy domain)
 - **Staging**: `staging.motherstream.live`
 
 A shared Nginx router handles HTTPS for both environments on standard ports (80/443) and routes traffic based on domain name.
@@ -148,13 +148,13 @@ After code changes:
 
 - **Production Frontend**: https://motherstream.live
 - **Production API**: https://motherstream.live/backend
-- **Production RTMP**: rtmp://motherstream.live:1935/live/[stream-key] or rtmp://always12.live:1935/live/[stream-key]
+- **Production RTMP**: rtmp://motherstream.live:1935/live/[stream-key] or rtmp://motherstream.live:1935/live/[stream-key]
 
 - **Staging Frontend**: https://staging.motherstream.live
 - **Staging API**: https://staging.motherstream.live/backend
 - **Staging RTMP**: rtmp://staging.motherstream.live:1936/live/[stream-key]
 
-> **Note**: `always12.live` is a legacy domain that only supports RTMP streaming (port 1935). It does not serve HTTP/HTTPS traffic. For all web access, use `motherstream.live`.
+> **Note**: `motherstream.live` is a legacy domain that only supports RTMP streaming (port 1935). It does not serve HTTP/HTTPS traffic. For all web access, use `motherstream.live`.
 
 ## Testing Staging
 

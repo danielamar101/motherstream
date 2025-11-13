@@ -48,7 +48,7 @@ cat backup.sql | ./docker-staging.sh exec -T postgres psql -U postgres -d mother
 
 | Environment | Frontend | Backend | RTMP |
 |-------------|----------|---------|------|
-| **Production** | https://motherstream.live | https://motherstream.live/backend | rtmp://motherstream.live:1935 or rtmp://always12.live:1935 |
+| **Production** | https://motherstream.live | https://motherstream.live/backend | rtmp://motherstream.live:1935 |
 | **Staging** | https://staging.motherstream.live | https://staging.motherstream.live/backend | rtmp://staging.motherstream.live:1936 |
 
 > **Note**: `always12.live` is a legacy domain used for RTMP streaming only. For HTTP/HTTPS, use `motherstream.live`.

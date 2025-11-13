@@ -54,9 +54,7 @@ origins = [
     "http://192.168.1.100:5173", 
     "http://localhost:5173",     
     "http://localhost", 
-    "http://raspberry:5173/",
-    "http://motherstream.xyz",    
-    "https://motherstream.xyz",    
+    "http://raspberry:5173/", 
     "http://54.164.3.167",
     "http://54.164.3.167:5173",
     *ENV_ORIGINS,  # Add environment-specific origins
