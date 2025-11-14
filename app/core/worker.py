@@ -29,7 +29,6 @@ class JobType(Enum):
     START_STREAM     = "start_stream"
     SWITCH_STREAM    = "switch_stream"
     TOGGLE_OBS_SRC   = "toggle_obs_source"
-    KICK_PUBLISHER   = "kick_publisher"
     RENAME_RECORDING = "rename_recording"
     STOP_RECORDING   = "stop_recording" 
     SEND_DISCORD_MESSAGE = "send_discord_message" 
@@ -38,6 +37,7 @@ class JobType(Enum):
     CHECK_STREAM_HEALTH = "check_stream_health"
     SWITCH_GSTREAMER_SOURCE = "switch_gstreamer_source"  # New: Dynamic source creation
     REMOVE_GSTREAMER_SOURCE = "remove_gstreamer_source"  # Remove GStreamer source when queue is empty
+    KICK_PUBLISHER   = "kick_publisher"
 
 @dataclass
 class Job:
@@ -166,6 +166,7 @@ def dispatch(job: Job):
         elif job.type == JobType.KICK_PUBLISHER:
             stream_key = job.payload.get("stream_key")
             if stream_key:
+                logger.info(f"Kicking RTMP publisher for stream {stream_key}")
                 drop_stream_publisher(stream_key)
             else:
                 logger.warning("KICK_PUBLISHER job missing 'stream_key' in payload")

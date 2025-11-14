@@ -5,14 +5,14 @@ import time
 import os
 import logging
 
-from ..lock_manager import lock as queue_lock, state_lock
+from ..lock_manager import lock as queue_lock
 from .time_manager import TimeManager
 # Import the global OBS instance instead of the class
 from ..obs import obs_socket_manager_instance
 # Remove direct imports of functions now handled by worker
-# from .srs_stream_manager import drop_stream_publisher, get_stream_state, async_record_stream
+# from .srs_stream_manager import async_record_stream
 # from app.api.discord import send_discord_message
-from .srs_stream_manager import get_stream_state # Keep if needed elsewhere
+from .srs_stream_manager import get_stream_state  # Keep if needed elsewhere
 from app.api.shazam import SongRecognizer
 from .stream_health_checker import StreamHealthChecker
 
@@ -30,11 +30,6 @@ class Singleton(type):
         return cls._instances[cls]
     
 class StreamManager(metaclass=Singleton):
-
-    priority_key = None
-
-    last_stream_key = None
-    is_blocking_last_streamer = False
 
     current_dj_name = None
     stream_queue = None
@@ -55,6 +50,11 @@ class StreamManager(metaclass=Singleton):
         
         # Stream switching lock - prevent concurrent switch_stream calls
         self.switching_lock = threading.Lock()
+
+        # Small state guard for last-stream + blocking metadata
+        self._state_lock = threading.Lock()
+        self._last_stream_key = None
+        self._block_last_streamer = False
         
         # Track if we've already enqueued turn-off jobs when queue becomes empty
         self.obs_turned_off_for_empty_queue = False
@@ -87,7 +87,6 @@ class StreamManager(metaclass=Singleton):
         dj_name = streamer.dj_name
         time_zone = streamer.timezone
         
-        self.set_priority_key(None)
         self.current_dj_name = dj_name
         self.time_manager = TimeManager()
         
@@ -149,7 +148,7 @@ class StreamManager(metaclass=Singleton):
             add_job(JobType.STOP_RECORDING, payload={"stream_key": old_streamer.stream_key, "dj_name": old_streamer.dj_name})
             logger.debug(f"Enqueued STOP_RECORDING job for {old_streamer.dj_name}")
 
-            # Kick old streamer publisher
+            # Drop the RTMP publisher so they cannot immediately resume
             add_job(JobType.KICK_PUBLISHER, payload={"stream_key": old_streamer.stream_key})
             logger.debug(f"Enqueued KICK_PUBLISHER job for {old_streamer.stream_key}")
 
@@ -157,10 +156,12 @@ class StreamManager(metaclass=Singleton):
             add_job(JobType.SEND_DISCORD_MESSAGE, payload={"message": f"{old_streamer.dj_name} has stopped streaming."}) 
             logger.debug(f"Enqueued SEND_DISCORD_MESSAGE job for {old_streamer.dj_name} stopped")
 
-            # Update internal state related to the old streamer
+            # Reset timer since the stream ended
+            self.time_manager = None
+            logger.debug("Reset time_manager after switching away from current streamer.")
+
+            # Remember the last streamer for optional blocking
             self.set_last_stream_key(old_streamer.stream_key)
-            self.time_manager = None # Reset timer since the stream ended
-            logger.debug(f"Updated internal state: last_stream_key={old_streamer.stream_key}, time_manager reset.")
 
             # Note: Health checker will be updated in start_stream() with new streamer's URL
 
@@ -173,15 +174,8 @@ class StreamManager(metaclass=Singleton):
                 # This call now correctly updates internal state and enqueues START_STREAM job
                 self.start_stream(current_streamer)
                 logger.debug(f"Called start_stream for {current_streamer.dj_name}")
-
-                # Prioritize new streamer (Internal state)
-                self.set_priority_key(current_streamer.stream_key)
-                logger.debug(f"Set priority key to {current_streamer.stream_key}")
             else:
                 logger.info("No next streamer in queue.")
-
-                self.set_priority_key(None)
-                
                 # Disable health checking when queue is empty
                 self.stream_health_checker.disable()
 
@@ -218,38 +212,50 @@ class StreamManager(metaclass=Singleton):
             logger.warning("Output stream unhealthy but no current streamer found")
             # Health checker will be updated when next stream starts
 
-    def delete_last_streamer_key(self):
-        with state_lock:
-            self.last_stream_key = None
-    
-    def set_last_stream_key(self, key):
-        with state_lock:
-            self.last_stream_key = key
-    
-    def get_last_streamer_key(self):
-        with state_lock:
-            return self.last_stream_key
-    
-    def get_priority_key(self):
-        with state_lock:
-            return self.priority_key
-    
-    def set_priority_key(self, key):
-        with state_lock:
-            self.priority_key = key
-
-
-    def get_is_blocking_last_streamer(self):
-        with state_lock:
-            return self.is_blocking_last_streamer
-    
-    def toggle_block_previous_client(self):
-        with state_lock:
-            self.is_blocking_last_streamer = not self.is_blocking_last_streamer
-            logger.info(f"Toggle last streamer block. Will block previously kicked client: {self.is_blocking_last_streamer}")
-
     def modify_swap_time(self,time, reset_time=False):
         self.time_manager.modify_swap_interval(interval=time,reset_time=reset_time)
+
+    # ------------------------------------------------------------------
+    # Lightweight state helpers for managing last streamer + blocking
+    # ------------------------------------------------------------------
+
+    def set_last_stream_key(self, key: str | None):
+        with self._state_lock:
+            self._last_stream_key = key
+
+    def get_last_stream_key(self) -> str | None:
+        with self._state_lock:
+            return self._last_stream_key
+
+    def clear_last_stream_key(self):
+        self.set_last_stream_key(None)
+
+    def get_is_blocking_last_streamer(self) -> bool:
+        with self._state_lock:
+            return self._block_last_streamer
+
+    def toggle_block_previous_client(self) -> bool:
+        with self._state_lock:
+            self._block_last_streamer = not self._block_last_streamer
+            logger.info(
+                "Toggle block previous client: %s",
+                "ON" if self._block_last_streamer else "OFF"
+            )
+            return self._block_last_streamer
+
+    def set_block_previous_client(self, value: bool):
+        with self._state_lock:
+            self._block_last_streamer = value
+
+    def should_block_streamer(self, stream_key: str | None) -> bool:
+        if not stream_key:
+            return False
+        with self._state_lock:
+            return (
+                self._block_last_streamer
+                and self._last_stream_key is not None
+                and self._last_stream_key == stream_key
+            )
     
     def flash_loading_message_loop(self):
         """Background loop to flash loading message when DJs are in queue."""
@@ -320,11 +326,12 @@ class StreamManager(metaclass=Singleton):
             lead_stream = self.stream_queue.lead_streamer()
             
             # Create compact state representation
+            queue_preview = tuple(motherstream_state[:3])
             current_state = {
                 'lead': lead_stream,
-                'last': self.get_last_streamer_key(),
                 'queue_len': len(motherstream_state),
-                'priority': self.get_priority_key(),
+                'preview': queue_preview,
+                'last': self.get_last_stream_key(),
                 'blocking': self.get_is_blocking_last_streamer()
             }
             
@@ -334,8 +341,8 @@ class StreamManager(metaclass=Singleton):
                 logger.info(
                     f"🎵 Queue: Lead={lead_stream or 'None'} | "
                     f"Queue({len(motherstream_state)})={queue_str} | "
-                    f"{'🔒 BLOCKING' if current_state['blocking'] else '✓ Open'} | "
-                    f"{'⭐ Priority: ' + current_state['priority'] if current_state['priority'] else '✓ No priority'}"
+                    f"Last={current_state['last'] or 'None'} | "
+                    f"{'🔒 BLOCKING' if current_state['blocking'] else '✓ Open'}"
                 )
                 self._last_logged_state = current_state
             

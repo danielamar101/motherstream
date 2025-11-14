@@ -1,74 +1,36 @@
 
-Assumptions:
+Assumptions
+-----------
 
-1. If the current streamer stops streaming (on_unpublish), they lose their spot at the front
-2. Once a streamer reaches the front of the queue, they will unpublish (via a kick) and are expected to republish through automatic retry mechanism in OBS
-3. If a non-current streamer stops streaming, they lose their spot as well
-4. Only unique stream keys join.
+1. When the **lead streamer** (queue head) stops streaming, they immediately lose the front spot and must requeue if they want another turn.
+2. Streamers are **never kicked** just to advance the queue—their RTMP session can stay connected while OBS switches to a different per-stream source.
+3. When any non-lead streamer stops streaming they are removed from the queue.
+4. Only unique stream keys can exist in the queue at any time.
+5. The queue itself is the single source of truth for “who is live” and “who is next.”
+6. Moderators can temporarily block the most recently disconnected lead from reclaiming the slot (useful when a timeout forcibly kicks them and OBS auto-retries).
+7. The system can still force-drop a publisher (via `KICK_PUBLISHER`) when moderation or swap timing requires it; blocking ensures they cannot immediately reclaim the feed.
 
-Motherstream algorithm
+Simplified Motherstream Flow
+----------------------------
 
+1. **First streamer joins (on_publish)**  
+   - Queue is empty ➜ enqueue streamer ➜ immediately start OBS pipeline using their dedicated RTMP URL ➜ forward their stream.
 
-# 1. User 1 starts the stream (on_publish)                 
-Current Stream: User 1, Next Stream: None, State: [User1] 
-#     If there is no stream active:
-    #     -> Current stream key is User 1
-    #     -> forward stream to motherstream/live
-# 2. User 2 enters the queue (on_publish)                  
-Current Stream: User 1, Next Stream: User 2, State: [User1,User2]
-#    If there is a current stream active, and the stream != User 2
-        -> add user 2 to queue
-        -> do not forward User 2
-# 2. User 3 enters the queue (on_publish)                  
-Current Stream: User 1, Next Stream: User 2, State: [User1,User2, USer3]
-#    If there is a current stream active, and the stream != User 3
-        -> add user 2 to queue
-        -> do not forward User 2
+2. **Additional streamers join (on_publish)**  
+   - Lead already exists ➜ enqueue new streamer if not already in queue ➜ do **not** forward them yet.
 
-# 3. User 1 leaves the stream or is kicked: (on_unpublish)
-#    If user is the current streamer and is_switching = False
-        update_state:
-        -> quarantined_streamer = User 1
-        -> is_switching = True
-        -> current_stream_key = User 2
-        -> next_stream_key = next in line                        
-Current Stream: User 2, Next Stream: None, State: [User2], is_switching: True
-# 3a. If User 1 kicked, OBS reconnect logic kicks in (on_publish)
-#    If there is a current stream active, and the stream 
-        -> add User 1 to the queue
-        -> do not forward User 1
-Current Stream: User 2, Next Stream: User 1, State: [User2, User1], is_switching: True
-# 4. Kick User 2 to re-initiate forwarding hook (on_unpublish):
-#     If user is not the current streamer and is_switching = True
-        -> do not update state
-        -> return
-        -> set is_switching = False
-Current Stream: User 2, Next Stream: User 1, State: [User2, User 1], is_switching: False
-# 5. OBS reconnect logic for user 2 (on_publish)
-#   If there is a current stream active and the user is the current streamer 
-        -> forward the connection, and do not mess with the state at all
-Current Stream: User 2, Next Stream: User 1, State: [User2, User 1], is_switching: False
-# 6. User 3 enters the queue (on_publish)        
-#   If there is a current stream active, and the stream != User 3
-        -> add user to queue
-        -> do not forward User 3       
-Current Stream: User 2, Next Stream: User 1, State: [User2, User1, User 3], is_switching: False
-# 7. User 2 runs out of stream time(kick) (on_unpublish):
-        -> Motherstream drops User 2 as a publisher manually (via independent process).
-#   If user is the current streamer and is_switching = False
-        update_state:
-        -> is_switching = True
-        -> current_stream_key = User 1
-        -> next_stream_key = User 3         
-Current Stream: User 1,  Next Stream: User 3, State: [User1, User 3], is_switching: True
-# 9. OBS reconnect logic for User 2 kicks in (on_publish):
-#   If there is a current stream active and the user is the current streamer 
-        -> forward the connection, and do not mess with the state at all
-Current Stream: User 1, Next Stream: User2, State: [User1,User3]
-# 4. Kick User 1 to re-initiate forwarding hook (on_unpublish):
-#     If user is not the current streamer and is_switching = True
-        -> do not update state
-        -> set is_switching = False
-        -> return
-Current Stream: User 1, Next Stream: User2, State: [User1,User3]
-    
+3. **Lead stops streaming (on_unpublish) or timer/health event fires**  
+   - `switch_stream()` pops the current lead from the queue, stops their recording, and schedules OBS jobs to point at the next stream key.
+   - If another streamer is waiting, `start_stream()` is called for that user; otherwise, OBS sources are turned off and health checks are paused.
+   - The removed streamer’s key is stored so that, if blocking is enabled, an immediate reconnect attempt can be rejected.
+
+4. **Non-lead streamer stops streaming (on_unpublish)**  
+   - Remove them from whichever queue position they occupied. No other state changes are needed.
+
+5. **Lead reconnects**  
+   - Because we no longer force disconnects, reconnects are treated like a fresh publish: if the queue was empty they become the lead again (unless blocked), otherwise they rejoin at the tail after a manual `on_publish`.
+
+6. **Forwarding decisions (on_forward)**  
+   - SRS only forwards streams whose key matches `stream_queue.lead_streamer()`. Every other stream remains connected but ignored.
+
+The result is a dramatically simpler system: the queue determines everything, OBS always switches directly between per-stream RTMP sources, and there is no additional state (`priority`, `last_stream_key`, `is_switching`, etc.) to synchronize.*** End Patch

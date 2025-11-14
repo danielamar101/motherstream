@@ -2,7 +2,7 @@
 import pytest
 import threading
 import time
-from app.lock_manager import lock as queue_lock, state_lock, obs_lock
+from app.lock_manager import lock as queue_lock, obs_lock
 
 
 @pytest.mark.unit
@@ -61,36 +61,6 @@ class TestQueueLockReentrancy:
 
 
 @pytest.mark.unit
-class TestStateLockNonReentrant:
-    """Test that state_lock is non-reentrant (regular Lock)."""
-    
-    def test_state_lock_single_acquisition(self):
-        """Verify state_lock can be acquired once."""
-        acquired = False
-        with state_lock:
-            acquired = True
-        assert acquired
-    
-    @pytest.mark.timeout(2)
-    def test_state_lock_blocks_other_threads(self):
-        """Verify state_lock blocks other threads."""
-        results = []
-        
-        def thread_func():
-            with state_lock:
-                results.append("thread")
-        
-        with state_lock:
-            t = threading.Thread(target=thread_func)
-            t.start()
-            time.sleep(0.1)
-            results.append("main")
-        
-        t.join()
-        assert results == ["main", "thread"]
-
-
-@pytest.mark.unit
 class TestObsLock:
     """Test OBS lock behavior."""
     
@@ -120,44 +90,4 @@ class TestObsLock:
         
         assert counter["value"] == 10, "Counter should be incremented exactly 10 times"
 
-
-@pytest.mark.unit
-class TestLockOrdering:
-    """Test that lock ordering prevents deadlocks."""
-    
-    @pytest.mark.timeout(5)
-    def test_queue_then_state_lock_order(self):
-        """Test acquiring queue_lock then state_lock (correct order)."""
-        results = []
-        
-        with queue_lock:
-            results.append("acquired_queue")
-            with state_lock:
-                results.append("acquired_state")
-        
-        assert results == ["acquired_queue", "acquired_state"]
-    
-    @pytest.mark.timeout(3)
-    def test_concurrent_ordered_lock_acquisition(self):
-        """Test that multiple threads acquiring locks in same order don't deadlock."""
-        results = []
-        errors = []
-        
-        def thread_func(thread_id):
-            try:
-                with queue_lock:
-                    time.sleep(0.01)
-                    with state_lock:
-                        results.append(thread_id)
-            except Exception as e:
-                errors.append(str(e))
-        
-        threads = [threading.Thread(target=thread_func, args=(i,)) for i in range(5)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        
-        assert len(errors) == 0, f"Should have no errors: {errors}"
-        assert len(results) == 5, "All threads should complete"
 

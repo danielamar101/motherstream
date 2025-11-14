@@ -79,9 +79,9 @@ tests/
 - ✅ Flag resets on stream start
 - ✅ `start_stream()` state management
 - ✅ Job enqueueing
-- ✅ State accessors (priority, last key, blocking)
-- ✅ Concurrent state access
-- ✅ Switch updates last_stream_key
+- ✅ Simplified queue-only state (no extra accessors)
+- ✅ Queue remains consistent after switch
+- ✅ Last-stream + blocking controls (toggle + helper methods)
 - ✅ Switch resets time_manager
 - ✅ Switch starts next stream
 - ✅ Switch with no next stream
@@ -97,8 +97,9 @@ tests/
 - ✅ Concurrent on_forward checks (consistent results)
 - ✅ Rapid publish/unpublish cycles
 - ✅ Complete stream switching flow
-- ✅ Blocking mechanism for kicked users
-- ✅ Non-blocked user can join
+- ✅ Queue membership for publish/unpublish flows
+- ✅ Forwarding restricted to lead streamer
+- ✅ Blocking mechanism for recently removed lead
 
 **Coverage:** All critical race condition scenarios
 

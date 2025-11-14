@@ -111,7 +111,6 @@ class TestConcurrentUnpublish:
         
         with patch('app.api.rtmp_endpoints.process_manager') as mock_pm:
             mock_pm.stream_queue = clean_queue
-            mock_pm.get_priority_key.return_value = None
             mock_pm.switch_stream.side_effect = count_switches
             
             def unpublish():
@@ -173,6 +172,40 @@ class TestOnForwardConcurrency:
         
         # All should get the same result (either all forwarded or all not)
         assert len(set(results)) == 1, f"Results should be consistent: {results}"
+
+
+@pytest.mark.integration
+class TestBlockingMechanism:
+    """Ensure recently removed leads can be temporarily blocked."""
+
+    @pytest.mark.timeout(10)
+    def test_blocked_user_cannot_rejoin_immediately(self, test_client, clean_stream_manager, mock_user):
+        with patch('app.api.rtmp_endpoints.process_manager', clean_stream_manager):
+            clean_stream_manager.set_last_stream_key(mock_user.stream_key)
+            clean_stream_manager.set_block_previous_client(True)
+
+            with patch('app.api.rtmp_endpoints.ensure_valid_user', return_value=mock_user):
+                response = test_client.post(
+                    "/rtmp/",
+                    json={"action": "on_publish", "stream": mock_user.stream_key, "app": "live", "param": ""}
+                )
+                assert response.status_code == 401
+
+    def test_non_blocked_user_can_join(self, test_client, clean_stream_manager, mock_user_factory):
+        user1 = mock_user_factory(1)
+        user2 = mock_user_factory(2)
+
+        with patch('app.api.rtmp_endpoints.process_manager', clean_stream_manager):
+            clean_stream_manager.set_last_stream_key(user1.stream_key)
+            clean_stream_manager.set_block_previous_client(True)
+
+            with patch('app.api.rtmp_endpoints.ensure_valid_user', return_value=user2):
+                with patch.object(clean_stream_manager.stream_queue, 'queue_client_stream_if_not_exists', return_value=True):
+                    response = test_client.post(
+                        "/rtmp/",
+                        json={"action": "on_publish", "stream": user2.stream_key, "app": "live", "param": ""}
+                    )
+                    assert response.status_code == 200
 
 
 @pytest.mark.integration
@@ -282,55 +315,4 @@ class TestStreamSwitchingFlow:
                 # Verify User 2 is now lead
                 assert clean_queue.lead_streamer() == user2.stream_key
 
-
-@pytest.mark.integration
-class TestBlockingMechanism:
-    """Test the blocking mechanism for kicked users."""
-    
-    @pytest.mark.timeout(10)
-    def test_blocked_user_cannot_rejoin(self, test_client, clean_stream_manager, mock_user):
-        """Blocked user should not be able to rejoin immediately."""
-        with patch('app.api.rtmp_endpoints.process_manager', clean_stream_manager):
-            # Set up blocking state
-            clean_stream_manager.set_last_stream_key(mock_user.stream_key)
-            clean_stream_manager.toggle_block_previous_client()  # Enable blocking
-            
-            with patch('app.api.rtmp_endpoints.ensure_valid_user', return_value=mock_user):
-                with patch('app.core.process_manager.add_job'):
-                    response = test_client.post(
-                        "/rtmp/",
-                        json={
-                            "action": "on_publish",
-                            "stream": mock_user.stream_key,
-                            "app": "live",
-                            "param": ""
-                        }
-                    )
-                    # Should be blocked (401)
-                    assert response.status_code == 401
-    
-    def test_non_blocked_user_can_join(self, test_client, clean_stream_manager, mock_user_factory):
-        """Different user should be able to join even when blocking is enabled."""
-        user1 = mock_user_factory(1)
-        user2 = mock_user_factory(2)
-        
-        with patch('app.api.rtmp_endpoints.process_manager', clean_stream_manager):
-            # Set up blocking state for user1
-            clean_stream_manager.set_last_stream_key(user1.stream_key)
-            clean_stream_manager.toggle_block_previous_client()
-            
-            # User2 should be able to join
-            with patch('app.api.rtmp_endpoints.ensure_valid_user', return_value=user2):
-                with patch('app.core.process_manager.add_job'):
-                    response = test_client.post(
-                        "/rtmp/",
-                        json={
-                            "action": "on_publish",
-                            "stream": user2.stream_key,
-                            "app": "live",
-                            "param": ""
-                        }
-                    )
-                    # Should succeed
-                    assert response.status_code == 200
 

@@ -4,5 +4,3 @@ import threading
 lock = threading.RLock()
 
 obs_lock = threading.Lock()
-
-state_lock = threading.Lock()  # For StreamManager state variables

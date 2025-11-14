@@ -90,26 +90,31 @@ async def timer_get():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
 @http_blueprint.post("/block-toggle")
 async def update_toggle():
-
+    """
+    Toggle whether the most recently disconnected streamer is temporarily blocked.
+    """
     try:
-        process_manager.toggle_block_previous_client()
-        return {"status": "success"}
+        blocking = process_manager.toggle_block_previous_client()
+        return {"status": "success", "blocking": blocking}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @http_blueprint.get("/block-toggle")
 async def get_toggle():
-
+    """
+    Return the current setting for temporary lead-blocking.
+    """
     try:
         is_blocked = process_manager.get_is_blocking_last_streamer()
-        return JSONResponse(content={"is_blocked": is_blocked})
+        last_stream = process_manager.get_last_stream_key()
+        return JSONResponse(content={"is_blocked": is_blocked, "last_stream_key": last_stream})
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
+    
 @http_blueprint.post("/obs/toggle-source")
 async def toggle_obs_source(
     source_name: str, 

@@ -126,70 +126,25 @@ class TestStartStream:
 
 @pytest.mark.unit
 class TestStateAccessors:
-    """Test thread-safe state accessors."""
-    
-    def test_get_set_priority_key(self, clean_stream_manager):
-        """Test getting and setting priority key."""
-        assert clean_stream_manager.get_priority_key() is None
-        
-        clean_stream_manager.set_priority_key("TEST_KEY")
-        assert clean_stream_manager.get_priority_key() == "TEST_KEY"
-        
-        clean_stream_manager.set_priority_key(None)
-        assert clean_stream_manager.get_priority_key() is None
-    
-    def test_get_set_last_streamer_key(self, clean_stream_manager):
-        """Test getting and setting last streamer key."""
-        assert clean_stream_manager.get_last_streamer_key() is None
-        
-        clean_stream_manager.set_last_stream_key("LAST_KEY")
-        assert clean_stream_manager.get_last_streamer_key() == "LAST_KEY"
-        
-        clean_stream_manager.delete_last_streamer_key()
-        assert clean_stream_manager.get_last_streamer_key() is None
-    
-    def test_get_toggle_blocking(self, clean_stream_manager):
-        """Test getting and toggling blocking state."""
-        initial_state = clean_stream_manager.get_is_blocking_last_streamer()
-        
+    """Test last-stream tracking and blocking helpers."""
+
+    def test_last_stream_key_roundtrip(self, clean_stream_manager):
+        clean_stream_manager.set_last_stream_key("LAST_A")
+        assert clean_stream_manager.get_last_stream_key() == "LAST_A"
+        clean_stream_manager.clear_last_stream_key()
+        assert clean_stream_manager.get_last_stream_key() is None
+
+    def test_toggle_block_previous_client(self, clean_stream_manager):
+        initial = clean_stream_manager.get_is_blocking_last_streamer()
+        updated = clean_stream_manager.toggle_block_previous_client()
+        assert updated != initial
+        assert clean_stream_manager.get_is_blocking_last_streamer() == updated
+
+    def test_should_block_streamer(self, clean_stream_manager):
         clean_stream_manager.toggle_block_previous_client()
-        new_state = clean_stream_manager.get_is_blocking_last_streamer()
-        
-        assert new_state != initial_state
-        
-        clean_stream_manager.toggle_block_previous_client()
-        assert clean_stream_manager.get_is_blocking_last_streamer() == initial_state
-    
-    @pytest.mark.timeout(5)
-    def test_concurrent_state_access(self, clean_stream_manager):
-        """Test concurrent access to state variables."""
-        errors = []
-        results = []
-        
-        def access_state(thread_id):
-            try:
-                for i in range(50):
-                    # Read
-                    priority = clean_stream_manager.get_priority_key()
-                    last = clean_stream_manager.get_last_streamer_key()
-                    blocking = clean_stream_manager.get_is_blocking_last_streamer()
-                    
-                    # Write
-                    clean_stream_manager.set_priority_key(f"KEY_{thread_id}_{i}")
-                    clean_stream_manager.set_last_stream_key(f"LAST_{thread_id}_{i}")
-                    
-                    results.append((priority, last, blocking))
-            except Exception as e:
-                errors.append(str(e))
-        
-        threads = [threading.Thread(target=access_state, args=(i,)) for i in range(5)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        
-        assert len(errors) == 0, f"Should not have errors: {errors}"
-        assert len(results) == 250  # 5 threads * 50 iterations
+        clean_stream_manager.set_last_stream_key("RECENT")
+        assert clean_stream_manager.should_block_streamer("RECENT") is True
+        assert clean_stream_manager.should_block_streamer("OTHER") is False
 
 
 @pytest.mark.unit
@@ -197,19 +152,19 @@ class TestSwitchStreamLogic:
     """Test switch_stream internal logic."""
     
     def test_switch_updates_last_stream_key(self, clean_stream_manager, clean_queue):
-        """switch_stream should update last_stream_key."""
+        """switch_stream should remember last streamer."""
         old_user = Mock()
         old_user.stream_key = "OLD_KEY"
         old_user.dj_name = "Old DJ"
-        
+
         clean_queue.stream_queue = [old_user]
-        
+
         with patch('app.core.process_manager.add_job'):
             with patch.object(clean_queue, '_write_persistent_state'):
                 clean_stream_manager.switch_stream()
-        
-        assert clean_stream_manager.get_last_streamer_key() == "OLD_KEY"
-    
+
+        assert clean_stream_manager.get_last_stream_key() == "OLD_KEY"
+
     def test_switch_resets_time_manager(self, clean_stream_manager, clean_queue):
         """switch_stream should reset time_manager."""
         from app.core.time_manager import TimeManager
@@ -245,22 +200,22 @@ class TestSwitchStreamLogic:
                 clean_stream_manager.switch_stream()
         
         # Should have enqueued jobs for both stopping old and starting new
-        assert mock_add_job.call_count > 5  # Multiple jobs enqueued
-        assert clean_stream_manager.get_priority_key() == "NEW_KEY"
+        assert mock_add_job.call_count >= 5  # STOP_RECORDING, KICK, Discord, Toggle, Start Stream etc.
+        assert clean_queue.stream_queue[0] == new_user
     
     def test_switch_with_no_next_stream(self, clean_stream_manager, clean_queue):
-        """switch_stream with no next stream should clear priority."""
+        """switch_stream with no next stream should disable health checks and retain last streamer key."""
         old_user = Mock()
         old_user.stream_key = "OLD_KEY"
         old_user.dj_name = "Old DJ"
         
         clean_queue.stream_queue = [old_user]
-        clean_stream_manager.set_priority_key("OLD_KEY")
         
         with patch('app.core.process_manager.add_job'):
             with patch.object(clean_queue, '_write_persistent_state'):
                 clean_stream_manager.switch_stream()
         
-        assert clean_stream_manager.get_priority_key() is None
         assert len(clean_queue.stream_queue) == 0
+        clean_stream_manager.stream_health_checker.disable.assert_called_once()
+        assert clean_stream_manager.get_last_stream_key() == "OLD_KEY"
 

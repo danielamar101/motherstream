@@ -20,7 +20,6 @@ class Singleton(type):
 
 class StreamQueue(metaclass=Singleton):
 
-    last_stream_key = None
     stream_queue = []
     queue_file_path = Path(os.getcwd()) / 'QUEUE.json'
 
