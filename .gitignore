@@ -26,3 +26,4 @@ oryx-staging/
 logs/
 tests/e2e/logs2/
 **/*/logs2/
+**/*/secrets.yaml
