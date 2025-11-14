@@ -318,8 +318,6 @@ Implement one of these solutions in the code:
 2. **Keep source hidden during restart** (recommended)
    - Modify job sequence in `app/core/process_manager.py`:
      ```python
-     # Turn off first
-     add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True})
      # Then restart while hidden
      add_job(JobType.RESTART_MEDIA_SOURCE, payload={"source_name": "GMOTHERSTREAM"})
      # Wait, then turn on

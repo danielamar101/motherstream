@@ -10,7 +10,6 @@ from datetime import datetime
 
 from app.api.discord import send_discord_message
 from app.core.srs_stream_manager import async_record_stream, drop_stream_publisher
-from app.core.stream_health_checker import StreamHealthChecker
 # Import the global OBS instance
 from app.obs import obs_socket_manager_instance
 

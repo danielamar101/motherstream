@@ -69,6 +69,12 @@ class StreamManager(metaclass=Singleton):
         # Track last logged state to reduce log spam
         self._last_logged_state = None
 
+    def get_rtmp_url(self,stream_key):
+        if os.getenv("ENV") == "prod":
+            return f"rtmp://{os.getenv("DOMAIN")}:{os.getenv("RTMP_PORT")}/live/{stream_key}"
+        else:
+            return f"rtmp://{os.getenv("DOMAIN")}:{os.getenv("PUBLIC_RTMP_PORT")}/staging/live/{stream_key}"
+
     def set_song_data(self,song_data):
         self.song_data = song_data
     
@@ -88,18 +94,14 @@ class StreamManager(metaclass=Singleton):
         # Reset flag when stream starts
         self.obs_turned_off_for_empty_queue = False
 
-        # NEW APPROACH: Create a fresh GStreamer source with the new stream's RTMP URL
-        # This avoids timestamp inconsistencies and ensures proper buffering before visibility
-
-        if os.getenv("ENV") == "prod":
-            rtmp_url = f"rtmp://{os.getenv("DOMAIN")}:{os.getenv("RTMP_PORT")}/live/{stream_key}"
-        else:
-            rtmp_url = f"rtmp://{os.getenv("DOMAIN")}:{os.getenv("PUBLIC_RTMP_PORT")}/staging/live/{stream_key}"
+        rtmp_url = self.get_rtmp_url(stream_key)
         
         # Update health checker to monitor this specific streamer's URL
         # (not the old forwarded /motherstream/live endpoint)
         self.stream_health_checker.update_stream_url(rtmp_url)
         
+        # NEW APPROACH: Create a fresh GStreamer source with the new stream's RTMP URL
+        # This avoids timestamp inconsistencies and ensures proper buffering before visibility
         add_job(JobType.SWITCH_GSTREAMER_SOURCE, payload={
             "rtmp_url": rtmp_url,
             "scene_name": "MOTHERSTREAM"
@@ -142,12 +144,6 @@ class StreamManager(metaclass=Singleton):
                 return # Nothing to switch from
 
             logger.debug(f"Switching away from: {old_streamer.dj_name} ({old_streamer.stream_key})")
-
-            # NOTE: With dynamic source creation, we don't need to manually turn off sources
-            # The SWITCH_GSTREAMER_SOURCE job (called in start_stream) handles hiding old sources
-            # However, we keep this for backwards compatibility with any static GMOTHERSTREAM sources
-            add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True})
-            logger.debug("Enqueued TOGGLE_OBS_SRC job (gstreamer off - legacy/safety)")
 
             # Stop recording old stream
             add_job(JobType.STOP_RECORDING, payload={"stream_key": old_streamer.stream_key, "dj_name": old_streamer.dj_name})
@@ -350,7 +346,6 @@ class StreamManager(metaclass=Singleton):
                     # This prevents a race condition where we turn off the source right after
                     # a new stream has just turned it on
                     if not self.switching_lock.locked():
-                        add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "GMOTHERSTREAM", "only_off": True})
                         self.stop_loading_message_thread()
                         logger.info("Enqueued TOGGLE_OBS_SRC job (gstreamer off) due to no lead stream")
                         
