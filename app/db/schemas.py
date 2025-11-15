@@ -9,6 +9,7 @@ class UserBase(BaseModel):
     password: str
     dj_name: str
     timezone: str
+    profile_picture: Optional[str] = None
 
 
     class Config:
@@ -32,12 +33,19 @@ class User(UserCreate):
     model_config = {
         'from_attributes': True
     }
+
+# For returning paginated users list
+class UsersPublic(BaseModel):
+    data: list[User]
+    count: int
     
 class UserUpdateMe(BaseModel):
     dj_name: Optional[str] = None
     stream_key: Optional[str] = None
     email: Optional[str] = None
     password: Optional[str] = None
+    timezone: Optional[str] = None
+    profile_picture: Optional[str] = None
 
 # # Function to convert SQLAlchemy model to Pydantic model
 # def sqlalchemy_to_pydantic(instance: Type[Base], pydantic_model: Type[BaseModel]) -> BaseModel:

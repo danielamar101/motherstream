@@ -27,7 +27,14 @@ def create_user(db: Session, user: schemas.UserBase):
 
     stream_key = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
 
-    db_user = models.User(email=user.email, password=hashed_password, stream_key=stream_key, dj_name=user.dj_name, timezone=user.timezone)
+    db_user = models.User(
+        email=user.email,
+        password=hashed_password,
+        stream_key=stream_key,
+        dj_name=user.dj_name,
+        timezone=user.timezone,
+        profile_picture=user.profile_picture or None,
+    )
     
     db.add(db_user)
     db.commit()
@@ -57,6 +64,8 @@ def edit_user(db: Session, user_id: int, user: schemas.User):
         db_user.email = user.email
     if user.timezone:
         db_user.timezone = user.timezone
+    if user.profile_picture is not None:
+        db_user.profile_picture = user.profile_picture or None
 
     db.commit()
     db.refresh(db_user)
@@ -69,6 +78,9 @@ def update_user_me(db: Session, user_id: int, user_update: schemas.UserUpdateMe)
         db_user.dj_name = user_update.dj_name or db_user.dj_name
         db_user.email = user_update.email or db_user.email
         db_user.stream_key = user_update.stream_key or db_user.stream_key
+        db_user.timezone = user_update.timezone or db_user.timezone
+        if user_update.profile_picture is not None:
+            db_user.profile_picture = user_update.profile_picture or None
 
         db.commit()
         db.refresh(db_user)

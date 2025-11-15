@@ -7,6 +7,7 @@ import threading
 from websocket import WebSocketConnectionClosedException
 
 from app.lock_manager import obs_lock
+from app.core.srs_stream_manager import is_stream_publishing
 
 logger = logging.getLogger(__name__)
 
@@ -751,6 +752,19 @@ class OBSSocketManager():
         """
         logger.info(f"Switching to new GStreamer source with URL: {rtmp_url}")
         
+        # SECONDARY VALIDATION: Extract stream key and verify it's publishing
+        # URL format: rtmp://host:port/live/STREAM_KEY or rtmp://host:port/staging/live/STREAM_KEY
+        try:
+            stream_key = rtmp_url.split('/')[-1]
+            logger.debug(f"Extracted stream key: {stream_key}")
+            
+            if not is_stream_publishing(stream_key):
+                logger.error(f"Stream {stream_key} is NOT publishing - aborting source switch to prevent hang")
+                return False
+            logger.debug(f"Stream {stream_key} verified as publishing")
+        except Exception as e:
+            logger.warning(f"Could not validate stream publishing status: {e} - proceeding anyway")
+        
         # Generate unique source name
         self._source_creation_counter += 1
         new_source_name = f"GMOTHERSTREAM_{self._source_creation_counter}"
@@ -769,9 +783,9 @@ class OBSSocketManager():
                 self.toggle_obs_source(old_source_name, scene_name, only_off=True)
             
             # Step 3: Wait for new source to become ready
-            # With low threshold, source starts quickly, buffer fills during playback
+            # Reduced timeout from 20s to 8s - if stuck in PAUSED that long, unlikely to recover
             logger.info(f"Step 2: Waiting for source '{new_source_name}' to become ready (should be ~2-5 seconds)")
-            ready = self.wait_for_source_ready(new_source_name, timeout=20.0, poll_interval=0.5)
+            ready = self.wait_for_source_ready(new_source_name, timeout=8.0, poll_interval=0.5)
             
             if not ready:
                 logger.error(f"New source '{new_source_name}' did not become ready, cleaning up")

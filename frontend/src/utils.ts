@@ -46,3 +46,60 @@ export const handleError = (err: ApiError, showToast: any) => {
   }
   showToast("Error", errorMessage, "error")
 }
+
+const FALLBACK_TIMEZONES = [
+  "UTC",
+  "Etc/UTC",
+  "America/Los_Angeles",
+  "America/Denver",
+  "America/Chicago",
+  "America/New_York",
+  "America/Phoenix",
+  "America/Bogota",
+  "America/Sao_Paulo",
+  "Europe/London",
+  "Europe/Berlin",
+  "Europe/Paris",
+  "Europe/Madrid",
+  "Europe/Rome",
+  "Europe/Warsaw",
+  "Europe/Stockholm",
+  "Europe/Moscow",
+  "Africa/Cairo",
+  "Africa/Johannesburg",
+  "Asia/Dubai",
+  "Asia/Kolkata",
+  "Asia/Bangkok",
+  "Asia/Singapore",
+  "Asia/Tokyo",
+  "Asia/Seoul",
+  "Asia/Shanghai",
+  "Asia/Hong_Kong",
+  "Australia/Sydney",
+  "Australia/Perth",
+  "Pacific/Auckland",
+]
+
+type IntlWithSupportedValues = typeof Intl & {
+  supportedValuesOf?: (key: "timeZone") => string[]
+}
+
+export const getTimezoneOptions = (): string[] => {
+  const intl = Intl as IntlWithSupportedValues
+  try {
+    if (typeof intl.supportedValuesOf === "function") {
+      return intl.supportedValuesOf("timeZone")
+    }
+  } catch (error) {
+    console.warn("Unable to read system timezones, using fallback list.", error)
+  }
+  return [...FALLBACK_TIMEZONES]
+}
+
+export const getDefaultTimezone = (): string => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+  } catch {
+    return "UTC"
+  }
+}

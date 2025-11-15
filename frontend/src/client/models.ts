@@ -55,6 +55,8 @@ export type UpdatePassword = {
 export type UserCreate = {
   email: string
   dj_name: string
+  timezone: string
+  profile_picture?: string | null
   is_active?: boolean
   is_superuser?: boolean
   password: string
@@ -64,6 +66,8 @@ export type UserPublic = {
   email: string
   dj_name: string 
   stream_key: string
+  timezone: string
+  profile_picture?: string | null
   is_active?: boolean
   is_superuser?: boolean
   id: string
@@ -74,6 +78,7 @@ export type UserRegister = {
   password: string
   dj_name: string 
   timezone: string
+  profile_picture?: string | null
 }
 
 export type UserUpdate = {
@@ -83,11 +88,15 @@ export type UserUpdate = {
   password?: string | null
   dj_name?: string 
   timezone?: string
+  profile_picture?: string | null
 }
 
 export type UserUpdateMe = {
-  timezone?: string | null
   email?: string | null
+  stream_key?: string | null
+  dj_name?: string | null
+  timezone?: string | null
+  profile_picture?: string | null
 }
 
 export type UsersPublic = {

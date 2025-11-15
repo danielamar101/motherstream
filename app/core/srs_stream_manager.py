@@ -150,4 +150,51 @@ def get_stream_state():
     return response
 
 
+def is_stream_publishing(stream_key: str, timeout: float = 2.0) -> bool:
+    """
+    Check if a specific stream key is currently publishing to SRS.
+    
+    Args:
+        stream_key: The stream key to check
+        timeout: Maximum time to wait for the API response
+        
+    Returns:
+        bool: True if stream is actively publishing, False otherwise
+    """
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": os.environ.get("SRS_AUTHORIZATION_BEARER", "Invalid auth bearer")
+    }
+
+    try:
+        response = requests.post(
+            f"{ORYX_API_BASE}/streams/query",
+            headers=headers,
+            timeout=timeout
+        )
+        
+        if response.status_code == 200:
+            json_response = response.json()
+            streams = json_response.get("data", {}).get("streams", [])
+            
+            # Check if our stream key is in the active streams list
+            for client in streams:
+                if client.get("stream") == stream_key:
+                    logger.debug(f"Stream {stream_key} is actively publishing")
+                    return True
+            
+            logger.debug(f"Stream {stream_key} is NOT currently publishing")
+            return False
+        else:
+            logger.warning(f"Failed to query stream state. Code: {response.status_code}")
+            return False
+            
+    except requests.Timeout:
+        logger.warning(f"Timeout checking if stream {stream_key} is publishing")
+        return False
+    except Exception as e:
+        logger.error(f"Exception checking if stream {stream_key} is publishing: {e}")
+        return False
+
+
 

@@ -12,7 +12,7 @@ from ..obs import obs_socket_manager_instance
 # Remove direct imports of functions now handled by worker
 # from .srs_stream_manager import async_record_stream
 # from app.api.discord import send_discord_message
-from .srs_stream_manager import get_stream_state  # Keep if needed elsewhere
+from .srs_stream_manager import get_stream_state, is_stream_publishing  # Keep if needed elsewhere
 from app.api.shazam import SongRecognizer
 from .stream_health_checker import StreamHealthChecker
 
@@ -96,16 +96,24 @@ class StreamManager(metaclass=Singleton):
         rtmp_url = self.get_rtmp_url(stream_key)
         
         # Update health checker to monitor this specific streamer's URL
-        # (not the old forwarded /motherstream/live endpoint)
         self.stream_health_checker.update_stream_url(rtmp_url)
         
-        # NEW APPROACH: Create a fresh GStreamer source with the new stream's RTMP URL
-        # This avoids timestamp inconsistencies and ensures proper buffering before visibility
-        add_job(JobType.SWITCH_GSTREAMER_SOURCE, payload={
-            "rtmp_url": rtmp_url,
-            "scene_name": "MOTHERSTREAM"
-        })
-        logger.info(f"Enqueued SWITCH_GSTREAMER_SOURCE job with URL: {rtmp_url}")
+        # PRE-VALIDATION: Check if stream is actually publishing before switching
+        logger.info(f"Validating stream {stream_key} is publishing before switching...")
+        if not is_stream_publishing(stream_key):
+            logger.warning(f"Stream {stream_key} is NOT currently publishing - skipping source switch to avoid 20s hang")
+            logger.warning(f"Starting recording/timer anyway in case stream comes online")
+            # Don't enqueue SWITCH_GSTREAMER_SOURCE if stream isn't publishing
+            # But still start recording/timer in case they reconnect
+        else:
+            logger.info(f"Stream {stream_key} confirmed publishing - proceeding with source switch")
+            # NEW APPROACH: Create a fresh GStreamer source with the new stream's RTMP URL
+            # This avoids timestamp inconsistencies and ensures proper buffering before visibility
+            add_job(JobType.SWITCH_GSTREAMER_SOURCE, payload={
+                "rtmp_url": rtmp_url,
+                "scene_name": "MOTHERSTREAM"
+            })
+            logger.info(f"Enqueued SWITCH_GSTREAMER_SOURCE job with URL: {rtmp_url}")
         
         add_job(JobType.START_STREAM, payload={"stream_key": stream_key, "dj_name": dj_name})
         logger.info(f"Enqueued START_STREAM job for DJ: {dj_name} with key: {stream_key}")
@@ -213,11 +221,13 @@ class StreamManager(metaclass=Singleton):
             # Health checker will be updated when next stream starts
 
     def modify_swap_time(self,time, reset_time=False):
-        self.time_manager.modify_swap_interval(interval=time,reset_time=reset_time)
-
-    # ------------------------------------------------------------------
-    # Lightweight state helpers for managing last streamer + blocking
-    # ------------------------------------------------------------------
+        """
+        Modify the swap interval time.
+        If the time manager is not set, create a new one.
+        """
+        if self.time_manager is None:
+            self.time_manager = TimeManager()
+        self.time_manager.modify_swap_interval(interval=time, reset_time=reset_time)
 
     def set_last_stream_key(self, key: str | None):
         with self._state_lock:

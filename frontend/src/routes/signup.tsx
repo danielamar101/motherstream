@@ -1,13 +1,16 @@
 import {
+  Avatar,
   Button,
   Container,
   Flex,
   FormControl,
   FormErrorMessage,
+  FormHelperText,
   FormLabel,
   Image,
   Input,
   Link,
+  Select,
   Text,
 } from "@chakra-ui/react"
 import {
@@ -15,12 +18,19 @@ import {
   createFileRoute,
   redirect,
 } from "@tanstack/react-router"
+import { type ChangeEvent, useMemo } from "react"
 import { type SubmitHandler, useForm } from "react-hook-form"
 
 import Logo from "/assets/images/fastapi-logo.svg"
 import type { UserRegister } from "../client"
 import useAuth, { isLoggedIn } from "../hooks/useAuth"
-import { confirmPasswordRules, emailPattern, passwordRules } from "../utils"
+import {
+  confirmPasswordRules,
+  emailPattern,
+  getDefaultTimezone,
+  getTimezoneOptions,
+  passwordRules,
+} from "../utils"
 
 export const Route = createFileRoute("/signup")({
   component: SignUp,
@@ -35,15 +45,23 @@ export const Route = createFileRoute("/signup")({
 
 interface UserRegisterForm extends UserRegister {
   confirm_password: string
+  profile_picture?: string | null
 }
+
+const MAX_PROFILE_PICTURE_SIZE = 4 * 1024 * 1024
 
 function SignUp() {
   const { signUpMutation } = useAuth()
-  console.log("Test, does this do aything")
+  const timezoneOptions = useMemo(() => getTimezoneOptions(), [])
+  const defaultTimezone = useMemo(() => getDefaultTimezone(), [])
   const {
     register,
     handleSubmit,
     getValues,
+    setValue,
+    watch,
+    clearErrors,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<UserRegisterForm>({
     mode: "onBlur",
@@ -53,12 +71,51 @@ function SignUp() {
       password: "",
       confirm_password: "",
       dj_name: "",
-      timezone: "",
+      timezone: defaultTimezone,
+      profile_picture: "",
     },
   })
 
+  const profilePictureValue = watch("profile_picture")
+  const djNameValue = watch("dj_name")
+
   const onSubmit: SubmitHandler<UserRegisterForm> = (data) => {
     signUpMutation.mutate(data)
+  }
+
+  const handleProfilePictureChange = (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      setValue("profile_picture", "", { shouldValidate: true })
+      clearErrors("profile_picture")
+      return
+    }
+
+    if (file.size > MAX_PROFILE_PICTURE_SIZE) {
+      setError("profile_picture", {
+        type: "validate",
+        message: "Profile picture must be smaller than 4MB",
+      })
+      event.target.value = ""
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") {
+        setValue("profile_picture", reader.result, { shouldValidate: true })
+        clearErrors("profile_picture")
+      }
+    }
+    reader.readAsDataURL(file)
+    event.target.value = ""
+  }
+
+  const clearProfilePicture = () => {
+    setValue("profile_picture", "", { shouldValidate: true })
+    clearErrors("profile_picture")
   }
 
   return (
@@ -111,9 +168,66 @@ function SignUp() {
               placeholder="DJ Name"
               type="text"
             />
-            {errors.email && (
-              <FormErrorMessage>{errors.email.message}</FormErrorMessage>
+            {errors.dj_name && (
+              <FormErrorMessage>{errors.dj_name.message}</FormErrorMessage>
             )}
+          </FormControl>
+          <FormControl id="timezone" isInvalid={!!errors.timezone}>
+            <FormLabel htmlFor="timezone" srOnly>
+              Time Zone
+            </FormLabel>
+            <Select
+              id="timezone"
+              placeholder="Select your time zone"
+              {...register("timezone", {
+                required: "Time zone is required",
+              })}
+            >
+              {timezoneOptions.map((timezone) => (
+                <option key={timezone} value={timezone}>
+                  {timezone}
+                </option>
+              ))}
+            </Select>
+            {errors.timezone && (
+              <FormErrorMessage>{errors.timezone.message}</FormErrorMessage>
+            )}
+          </FormControl>
+          <FormControl
+            id="profile_picture"
+            isInvalid={!!errors.profile_picture}
+          >
+            <FormLabel htmlFor="profile_picture">Profile Picture</FormLabel>
+            <Flex gap={4} align="center">
+              <Avatar
+                size="lg"
+                name={djNameValue || undefined}
+                src={profilePictureValue || undefined}
+              />
+              <Flex direction="column" gap={2} flex="1">
+                <Input
+                  id="profile_picture"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleProfilePictureChange}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearProfilePicture}
+                  isDisabled={!profilePictureValue}
+                >
+                  Remove
+                </Button>
+              </Flex>
+            </Flex>
+            <FormHelperText>PNG or JPG up to 4MB.</FormHelperText>
+            {errors.profile_picture && (
+              <FormErrorMessage>
+                {errors.profile_picture.message}
+              </FormErrorMessage>
+            )}
+            <Input type="hidden" {...register("profile_picture")} />
           </FormControl>
           <FormControl id="password" isInvalid={!!errors.password}>
             <FormLabel htmlFor="password" srOnly>

@@ -62,6 +62,7 @@ def mock_user():
     user.stream_key = "TEST_KEY_123"
     user.dj_name = "Test DJ"
     user.timezone = "UTC"
+    user.profile_picture = None
     user.email = "test@example.com"
     return user
 
@@ -77,6 +78,7 @@ def mock_user_factory():
         user.stream_key = f"TEST_KEY_{user_id}"
         user.dj_name = f"Test DJ {user_id}"
         user.timezone = "UTC"
+        user.profile_picture = None
         user.email = f"test{user_id}@example.com"
         return user
     
