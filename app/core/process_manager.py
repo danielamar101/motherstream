@@ -68,6 +68,9 @@ class StreamManager(metaclass=Singleton):
         
         # Track last logged state to reduce log spam
         self._last_logged_state = None
+        
+        # Track pending source creation for streams that aren't publishing yet
+        self.pending_source_creation = None  # Stores {rtmp_url, scene_name, stream_key, dj_name, attempts, started_at}
 
     def get_rtmp_url(self,stream_key):
         if os.getenv("ENV") == "prod":
@@ -101,10 +104,18 @@ class StreamManager(metaclass=Singleton):
         # PRE-VALIDATION: Check if stream is actually publishing before switching
         logger.info(f"Validating stream {stream_key} is publishing before switching...")
         if not is_stream_publishing(stream_key):
-            logger.warning(f"Stream {stream_key} is NOT currently publishing - skipping source switch to avoid 20s hang")
-            logger.warning(f"Starting recording/timer anyway in case stream comes online")
-            # Don't enqueue SWITCH_GSTREAMER_SOURCE if stream isn't publishing
-            # But still start recording/timer in case they reconnect
+            logger.warning(f"Stream {stream_key} is NOT currently publishing - deferring source creation")
+            logger.warning(f"Starting recording/timer anyway, will retry when stream comes online")
+            
+            # DEFER SOURCE CREATION - store for retry in main loop
+            self.pending_source_creation = {
+                "rtmp_url": rtmp_url,
+                "scene_name": "MOTHERSTREAM",
+                "stream_key": stream_key,
+                "dj_name": dj_name,
+                "attempts": 0,
+                "started_at": time.time()
+            }
         else:
             logger.info(f"Stream {stream_key} confirmed publishing - proceeding with source switch")
             # NEW APPROACH: Create a fresh GStreamer source with the new stream's RTMP URL
@@ -114,6 +125,8 @@ class StreamManager(metaclass=Singleton):
                 "scene_name": "MOTHERSTREAM"
             })
             logger.info(f"Enqueued SWITCH_GSTREAMER_SOURCE job with URL: {rtmp_url}")
+            # Clear any pending state since we succeeded
+            self.pending_source_creation = None
         
         add_job(JobType.START_STREAM, payload={"stream_key": stream_key, "dj_name": dj_name})
         logger.info(f"Enqueued START_STREAM job for DJ: {dj_name} with key: {stream_key}")
@@ -319,6 +332,50 @@ class StreamManager(metaclass=Singleton):
         add_job(JobType.TOGGLE_OBS_SRC, payload={"source_name": "LOADING", "only_off": True})
         logger.debug("Enqueued TOGGLE_OBS_SRC job (loading off)")
 
+    def _check_pending_source_creation(self):
+        """
+        Check if a deferred source creation can now proceed.
+        Called from main loop - validates stream is still lead and is now publishing.
+        """
+        if not self.pending_source_creation:
+            return
+        
+        pending = self.pending_source_creation
+        stream_key = pending["stream_key"]
+        elapsed = time.time() - pending["started_at"]
+        
+        # VALIDATION 1: Check if this stream is still the lead streamer
+        current_lead = self.stream_queue.lead_streamer()
+        if current_lead != stream_key:
+            logger.warning(f"Aborting pending source creation for {stream_key} - no longer lead stream (current lead: {current_lead})")
+            self.pending_source_creation = None
+            return
+        
+        # VALIDATION 2: Give up after 30 seconds even if still lead
+        if elapsed > 10:
+            logger.error(f"Giving up on source creation for {stream_key} after 30s - stream never came online")
+            self.pending_source_creation = None
+            return
+        
+        # VALIDATION 3: Check if stream is now publishing
+        pending["attempts"] += 1
+        
+        if is_stream_publishing(stream_key):
+            logger.info(f"🎉 Stream {stream_key} now publishing! Creating GSTREAMER source (attempt {pending['attempts']}, after {elapsed:.1f}s)")
+            
+            add_job(JobType.SWITCH_GSTREAMER_SOURCE, payload={
+                "rtmp_url": pending["rtmp_url"],
+                "scene_name": pending["scene_name"]
+            })
+            logger.info(f"Enqueued deferred SWITCH_GSTREAMER_SOURCE job with URL: {pending['rtmp_url']}")
+            
+            # Clear pending state - success!
+            self.pending_source_creation = None
+        else:
+            # Still waiting - log periodically to show we're still trying
+            if pending["attempts"] % 2 == 0:  # Log every ~6 seconds (2 attempts * 3s loop)
+                logger.debug(f"Still waiting for stream {stream_key} to come online (attempt {pending['attempts']}, {elapsed:.1f}s elapsed)")
+
     # Background thread to manage the stream queue
     def process_queue(self):
         # for init
@@ -357,6 +414,11 @@ class StreamManager(metaclass=Singleton):
                 self._last_logged_state = current_state
             
             if not lead_stream:
+                # No lead stream - clear any pending source creation
+                if self.pending_source_creation:
+                    logger.info(f"Clearing pending source creation - queue is now empty")
+                    self.pending_source_creation = None
+                
                 # Only enqueue turn-off jobs once when queue becomes empty
                 if not self.obs_turned_off_for_empty_queue:
                     # Only turn off GMOTHERSTREAM if a stream switch is not currently in progress
@@ -379,6 +441,10 @@ class StreamManager(metaclass=Singleton):
             else:
                 # Reset flag when we have a lead stream
                 self.obs_turned_off_for_empty_queue = False
+                
+                # CHECK FOR PENDING SOURCE CREATION
+                # This handles the case where stream wasn't publishing when start_stream was called
+                self._check_pending_source_creation()
                 
                 # Only enqueue health check if:
                 # 1. Health checking is enabled (stream is active and connected)

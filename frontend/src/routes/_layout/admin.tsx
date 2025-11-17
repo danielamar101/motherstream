@@ -271,7 +271,35 @@ function StreamSettingsPanel() {
 
   // Mutations for all endpoints
   const toggleBlockMutation = createMutation(`${API_BASE_URL}/block-toggle`, "POST", "Block toggle updated")
-  const updateTimerMutation = createMutation(`${API_BASE_URL}/update-timer/${selectedTime}?reset_time=${resetTime}`, "POST", "Timer updated")
+  
+  const updateTimerMutation = useMutation({
+    mutationFn: async ({ time, resetTime }: { time: string; resetTime: boolean }) => {
+      const timeInSeconds = parseInt(time) * 60
+      const res = await fetch(`${API_BASE_URL}/update-timer/${timeInSeconds}?reset_time=${resetTime}`, {
+        method: "POST",
+      })
+      if (!res.ok) throw new Error("Failed to update timer")
+      return res.json()
+    },
+    onSuccess: () => {
+      toast({
+        title: "Timer updated",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      })
+      queryClient.invalidateQueries({ queryKey: ["time-settings"] })
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      })
+    },
+  })
   
   // OBS Source Controls
   const toggleObsSourceMutation = useMutation({
@@ -424,18 +452,20 @@ function StreamSettingsPanel() {
           <Box>
             <Heading size="sm" mb={2}>Update Timer</Heading>
             <HStack>
-              <Select
+              <NumberInput
                 value={selectedTime}
-                onChange={(e) => setSelectedTime(e.target.value)}
+                onChange={(value) => setSelectedTime(value)}
+                min={1}
+                max={120}
                 width="120px"
               >
-                <option value="1">1 min</option>
-                <option value="5">5 min</option>
-                <option value="10">10 min</option>
-                <option value="15">15 min</option>
-                <option value="30">30 min</option>
-                <option value="60">60 min</option>
-              </Select>
+                <NumberInputField placeholder="Minutes" />
+                <NumberInputStepper>
+                  <NumberIncrementStepper />
+                  <NumberDecrementStepper />
+                </NumberInputStepper>
+              </NumberInput>
+              <Box fontSize="sm" whiteSpace="nowrap">minutes</Box>
               <Checkbox
                 isChecked={resetTime}
                 onChange={(e) => setResetTime(e.target.checked)}
