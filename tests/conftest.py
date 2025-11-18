@@ -24,26 +24,33 @@ def pytest_configure(config):
 
 
 @pytest.fixture(autouse=True)
-def reset_singletons():
+def reset_singletons(request):
     """Reset singleton instances before each test."""
-    from app.core.process_manager import StreamManager
-    from app.core.queue import StreamQueue
-    
-    # Store original instances
-    original_instances = {}
-    for cls in [StreamManager, StreamQueue]:
-        if hasattr(cls, '_instances'):
-            original_instances[cls] = cls._instances.copy()
-    
-    yield
-    
-    # Cleanup after test - restore or clear
-    for cls in [StreamManager, StreamQueue]:
-        if hasattr(cls, '_instances'):
-            if cls in original_instances:
-                cls._instances = original_instances[cls]
-            else:
-                cls._instances.clear()
+    # Only run for non-integration tests to avoid import issues
+    if 'integration' not in request.keywords:
+        try:
+            from app.core.process_manager import StreamManager
+            from app.core.queue import StreamQueue
+            
+            # Store original instances
+            original_instances = {}
+            for cls in [StreamManager, StreamQueue]:
+                if hasattr(cls, '_instances'):
+                    original_instances[cls] = cls._instances.copy()
+            
+            yield
+            
+            # Cleanup after test - restore or clear
+            for cls in [StreamManager, StreamQueue]:
+                if hasattr(cls, '_instances'):
+                    if cls in original_instances:
+                        cls._instances = original_instances[cls]
+                    else:
+                        cls._instances.clear()
+        except (ImportError, PermissionError):
+            yield
+    else:
+        yield
 
 
 @pytest.fixture
