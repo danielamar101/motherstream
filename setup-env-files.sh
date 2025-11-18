@@ -44,11 +44,15 @@ STAT_PORT=8989
 # Security
 JWT_SECRET=CHANGE_ME_JWT_SECRET
 
-# SMTP (unused currently)
-SMTP_SERVER=
-SMTP_PORT=
-SMTP_USER=
-SMTP_PASSWORD=
+# SMTP Configuration for Password Reset Emails
+# For Gmail: Use smtp.gmail.com with App Password
+# For SendGrid: Use smtp.sendgrid.net with API Key as password
+# For AWS SES: Use email-smtp.region.amazonaws.com
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=CHANGE_ME_SMTP_EMAIL
+SMTP_PASSWORD=CHANGE_ME_SMTP_PASSWORD
+SMTP_FROM_EMAIL=noreply@motherstream.live
 
 # API URLs
 VITE_API_URL=https://motherstream.live/backend
@@ -114,11 +118,15 @@ STAT_PORT=8989
 # Security
 JWT_SECRET=CHANGE_ME_JWT_SECRET_STAGING
 
-# SMTP (unused currently)
-SMTP_SERVER=
-SMTP_PORT=
-SMTP_USER=
-SMTP_PASSWORD=
+# SMTP Configuration for Password Reset Emails
+# For Gmail: Use smtp.gmail.com with App Password
+# For SendGrid: Use smtp.sendgrid.net with API Key as password
+# For AWS SES: Use email-smtp.region.amazonaws.com
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=CHANGE_ME_SMTP_EMAIL_STAGING
+SMTP_PASSWORD=CHANGE_ME_SMTP_PASSWORD_STAGING
+SMTP_FROM_EMAIL=noreply@staging.motherstream.live
 
 # API URLs
 VITE_API_URL=https://staging.motherstream.live/backend

@@ -161,7 +161,7 @@ function Login() {
           </Link>
         </Text>
 
-        <DiscordButton inviteCode="6DquCakK" />
+        <DiscordButton inviteCode="7rXZvjrn" />
       </Container>
     </>
   )

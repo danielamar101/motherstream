@@ -1,9 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+import logging
 
 from .. import schemas, crud, models
 from ..security import get_current_user, ph
 from ..main import get_db
+from ..email import send_welcome_email
+
+logger = logging.getLogger(__name__)
 
 user_router = APIRouter()
 
@@ -50,7 +54,18 @@ def register_user(user_register: schemas.UserBase, db: Session = Depends(get_db)
         raise HTTPException(status_code=400, detail="Email already registered")
     if not user_register.timezone:
         raise HTTPException(status_code=422, detail="Timezone is required")
+    
+    # Create the user account
     user = crud.create_user(db=db, user=user_register)
+    
+    # Send welcome email (don't fail registration if email fails)
+    try:
+        send_welcome_email(user.email, user.dj_name)
+        logger.info(f"Welcome email sent to new user: {user.email}")
+    except Exception as e:
+        logger.error(f"Failed to send welcome email to {user.email}: {e}")
+        # Continue with registration even if email fails
+    
     return user
 
 @user_router.get("/api/v1/users/{user_id}", response_model=schemas.User)

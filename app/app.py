@@ -22,6 +22,7 @@ def register_app(app,process_manager):
     from app.db.routes.login import login_router
     from app.db.routes.users import user_router
     from app.db.routes.utils import util_router
+    from app.db.routes.password_reset import password_reset_router
 
 
     app.include_router(rtmp_blueprint)
@@ -30,6 +31,7 @@ def register_app(app,process_manager):
     app.include_router(login_router)
     app.include_router(user_router)
     app.include_router(util_router)
+    app.include_router(password_reset_router)
 
 
 

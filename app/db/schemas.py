@@ -72,6 +72,9 @@ class Message(BaseModel):
     message: str
 
 # Password Reset Schemas
+class PasswordRecoveryRequest(BaseModel):
+    email: str
+
 class NewPassword(BaseModel):
     token: str
     new_password: str

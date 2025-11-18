@@ -1,6 +1,9 @@
 from sqlalchemy.orm import Session
 import string
 import random
+import secrets
+import datetime
+from datetime import timedelta
 
 from . import models, schemas
 from .security import ph
@@ -105,3 +108,64 @@ def delete_user(db: Session, user_id: int):
         db.delete(db_user)
         db.commit()
     return
+
+# Password Reset Token Functions
+
+def create_password_reset_token(db: Session, user_id: int, expiration_hours: int = 24):
+    """Create a password reset token for a user"""
+    # Generate a secure random token
+    token = secrets.token_urlsafe(32)
+    
+    # Create expiration time
+    expires_at = datetime.datetime.utcnow() + timedelta(hours=expiration_hours)
+    
+    # Invalidate any existing unused tokens for this user
+    db.query(models.PasswordResetToken).filter(
+        models.PasswordResetToken.user_id == user_id,
+        models.PasswordResetToken.used == False
+    ).update({"used": True})
+    
+    # Create new token
+    db_token = models.PasswordResetToken(
+        user_id=user_id,
+        token=token,
+        expires_at=expires_at
+    )
+    db.add(db_token)
+    db.commit()
+    db.refresh(db_token)
+    return db_token
+
+def get_password_reset_token(db: Session, token: str):
+    """Get a password reset token if valid"""
+    return db.query(models.PasswordResetToken).filter(
+        models.PasswordResetToken.token == token,
+        models.PasswordResetToken.used == False,
+        models.PasswordResetToken.expires_at > datetime.datetime.utcnow()
+    ).first()
+
+def mark_token_as_used(db: Session, token_id: int):
+    """Mark a token as used"""
+    db.query(models.PasswordResetToken).filter(
+        models.PasswordResetToken.id == token_id
+    ).update({"used": True})
+    db.commit()
+
+def reset_user_password(db: Session, user_id: int, new_password: str):
+    """Reset a user's password"""
+    user = get_user(db, user_id=user_id)
+    if user:
+        hashed_password = ph.hash(new_password)
+        user.password = hashed_password
+        db.commit()
+        db.refresh(user)
+        return True
+    return False
+
+def cleanup_expired_tokens(db: Session):
+    """Remove expired tokens from database"""
+    deleted = db.query(models.PasswordResetToken).filter(
+        models.PasswordResetToken.expires_at < datetime.datetime.utcnow()
+    ).delete()
+    db.commit()
+    return deleted
